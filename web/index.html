@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strength Tank Wall</title>
+<link rel="stylesheet" href="app.css">
+<script src="vendor/omggif.js"></script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="brand"><span class="brand-dot"></span>Strength Tank Wall</div>
+  <nav id="tabs" aria-label="Sections">
+    <a href="#wall">Wall<span class="sr-only"></span></a>
+    <a href="#athletes">Athletes<span class="sr-only"></span></a>
+    <a href="#media">Media<span class="sr-only"></span></a>
+    <a href="#rotation">Rotation<span class="sr-only"></span></a>
+    <a href="#settings">Settings<span class="sr-only"></span></a>
+  </nav>
+</header>
+
+<div id="conn" class="conn" role="alert" hidden>
+  <span id="conn-msg"></span>
+  <button id="conn-retry" type="button">Try again</button>
+</div>
+<div id="lock" class="conn" role="alert" hidden>
+  <span id="lock-msg"></span>
+</div>
+
+<!-- First run: no admin PIN yet, so nothing can be changed until one is set -->
+<section id="setup" class="setup" hidden aria-labelledby="setup-title">
+  <div class="card">
+    <h2 id="setup-title">Set an admin PIN</h2>
+    <p>The wall needs an admin PIN before anything on it can be changed. Anyone on the gym Wi-Fi can look at this page, but saving athletes, media, the rotation or settings will ask for the PIN.</p>
+    <form id="setup-form" class="form">
+      <label>New PIN, 6 to 12 digits <input type="password" id="setup-pin" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password" enterkeyhint="next"></label>
+      <label>Type it again <input type="password" id="setup-pin2" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password" enterkeyhint="done"></label>
+      <p id="setup-error" class="pin-error" role="alert" hidden></p>
+      <div class="row"><span class="spacer"></span><button id="setup-save" class="primary">Set PIN</button></div>
+    </form>
+    <p class="hint">Write it down somewhere safe. On the real wall the first PIN is set while connected to the wall's own setup Wi-Fi. If the PIN is ever lost, switch the wall off and on again, and as soon as it lights up press and hold the BOOT button on the wall's controller for 10 seconds. That clears the PIN, and you set a new one from the setup Wi-Fi. (Don't hold BOOT while switching on: that puts the controller into programming mode.)</p>
+  </div>
+</section>
+
+<main id="main" tabindex="-1">
+  <!-- Wall: preview of the rotation and control of the real wall -->
+  <section id="wall" class="tab">
+    <div class="card">
+      <div class="card-head"><h2>Preview</h2><span class="muted">Only on this screen. The wall is not affected.</span></div>
+      <p id="pv-label" class="pv-label"></p>
+      <canvas id="pv-canvas" class="led"></canvas>
+      <div class="row">
+        <button id="pv-prev" type="button">◀ Prev</button>
+        <button id="pv-play" type="button">Pause</button>
+        <button id="pv-next" type="button">Next ▶</button>
+        <span id="pv-timer" class="muted"></span>
+        <span class="spacer"></span>
+        <label class="inline"><input type="checkbox" id="pv-seams"> Show panel edges</label>
+      </div>
+      <div id="pv-strip" class="strip" role="group" aria-label="Screens in the rotation, in order"></div>
+      <p class="hint">Plays the rotation with the real screen times, including changes you haven't saved yet. Tap a screen below (or use the ← → keys) to hold it and check it closely. Press Play to carry on.</p>
+    </div>
+    <div class="card">
+      <h2>Control the wall</h2>
+      <p class="hint">These buttons change what the wall is showing right now.</p>
+      <div class="row">
+        <button type="button" data-control="prev">◀ Previous</button>
+        <button type="button" data-control="pause">Pause</button>
+        <button type="button" data-control="resume">Resume</button>
+        <button type="button" data-control="next">Next ▶</button>
+      </div>
+      <dl id="status" class="status"></dl>
+      <details id="diag" class="diag">
+        <summary>Diagnostics</summary>
+        <dl id="diag-list" class="status"></dl>
+        <p class="hint">For whoever looks after the wall's hardware. Nothing here needs to be checked day to day.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- Athletes -->
+  <section id="athletes" class="tab">
+    <div class="card">
+      <div class="card-head"><h2>Athletes</h2><span id="ath-summary" class="muted"></span></div>
+      <div class="row">
+        <input id="ath-filter" class="find" type="search" placeholder="Find an athlete" aria-label="Find an athlete" autocomplete="off" enterkeyhint="search">
+        <button id="ath-add" type="button">+ Add athlete</button>
+        <label class="button" tabindex="0" role="button" id="ath-import-label">Import CSV<input type="file" id="ath-import" accept=".csv,text/csv" hidden></label>
+        <button id="ath-export" type="button">Export CSV</button>
+      </div>
+      <p id="ath-nomatch" class="muted" hidden></p>
+      <div id="ath-import-bar" class="notice" hidden></div>
+      <div id="ath-errors" class="error-list" role="alert" hidden></div>
+      <div class="table-wrap">
+        <table id="ath-table">
+          <thead>
+            <tr>
+              <th class="c-move" aria-label="Order"></th>
+              <th class="c-name">Name / handle</th>
+              <th><abbr title="Snatch">S</abbr></th><th><abbr title="Clean &amp; jerk">CJ</abbr></th><th><abbr title="Total">Ttl</abbr></th><th><abbr title="Back squat">BS</abbr></th><th><abbr title="Front squat">FS</abbr></th>
+              <th class="c-notes">Notes (not shown on the wall)</th>
+              <th class="c-show" title="Show on the wall">Show</th>
+              <th aria-label="Remove"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint">Weights are kg in 0.5 kg steps. Leave a lift blank if it hasn't been done. Total is the best total from one session, so it can be lower than S + CJ; the S+CJ button fills in the sum. A lift you raise is outlined in green, and after you save it shows as a new PR in green on the wall.</p>
+      <div class="savebar" id="ath-bar">
+        <span class="save-state" id="ath-state" aria-live="polite"></span>
+        <span class="spacer"></span>
+        <button id="ath-revert" type="button" class="ghost">Discard</button>
+        <button id="ath-save" type="button" class="primary">Save</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>How it fits on the wall</h2><span id="fit-summary" class="muted"></span></div>
+      <div id="fit-pages" class="pages"></div>
+    </div>
+  </section>
+
+  <!-- Media -->
+  <section id="media" class="tab">
+    <div class="card">
+      <h2>Add an image or video</h2>
+      <label class="drop" id="drop" tabindex="0">
+        <input type="file" id="media-file" accept="image/*,video/*,.mov,.mp4,.webm" hidden>
+        <strong>Choose a photo or video</strong>
+        <span class="muted">Or drop a file here. JPG, PNG, WebP, GIF (animated too), MP4, MOV, WebM: anything this browser can play. Video clips up to 60 s.</span>
+      </label>
+      <div id="media-editor" hidden>
+        <canvas id="crop-canvas" class="led"></canvas>
+        <div class="grid">
+          <label>Fit
+            <select id="crop-fit">
+              <option value="cover">Fill the wall (crop)</option>
+              <option value="contain">Show it all (black bars)</option>
+            </select>
+          </label>
+          <label>Zoom <input type="range" id="crop-zoom" min="1" max="4" step="0.05" value="1"></label>
+          <label>Left / right <input type="range" id="crop-x" min="0" max="1" step="0.01" value="0.5"></label>
+          <label>Up / down <input type="range" id="crop-y" min="0" max="1" step="0.01" value="0.5"></label>
+        </div>
+        <div id="video-opts" class="grid" hidden>
+          <label>Start (s) <input type="number" id="clip-start" min="0" step="0.1" inputmode="decimal" value="0"></label>
+          <label>End (s) <input type="number" id="clip-end" min="0" step="0.1" inputmode="decimal"></label>
+          <label>Frames per second
+            <select id="clip-fps"><option>10</option><option>12</option><option selected>15</option><option>20</option><option>25</option></select>
+          </label>
+        </div>
+        <div class="grid">
+          <label>Name <input type="text" id="media-name" maxlength="40"></label>
+          <label class="inline"><input type="checkbox" id="media-add" checked> Add to the rotation for
+            <input type="number" id="media-seconds" min="5" max="999" step="1" inputmode="numeric" value="10" class="secs"> s</label>
+        </div>
+        <p id="media-info" class="muted"></p>
+        <div class="row">
+          <button id="media-cancel" type="button" class="ghost">Cancel</button>
+          <span class="spacer"></span>
+          <button id="media-convert" type="button" class="primary">Convert &amp; upload</button>
+        </div>
+        <div id="media-progress-wrap" hidden>
+          <progress id="media-progress" max="1" value="0"></progress>
+          <span id="media-progress-label" class="muted"></span>
+          <button id="media-stop" type="button" class="ghost small">Stop</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>On the board</h2><span id="storage" class="muted"></span></div>
+      <div id="storage-bar" class="meter"><span></span></div>
+      <div id="media-list" class="media-grid"></div>
+    </div>
+  </section>
+
+  <!-- Rotation -->
+  <section id="rotation" class="tab">
+    <div class="card">
+      <div class="card-head"><h2>Rotation</h2><span id="rot-summary" class="muted"></span></div>
+      <ol id="rot-list" class="slides"></ol>
+      <div class="row">
+        <button id="rot-add-wb" type="button">+ PR whiteboard</button>
+        <select id="rot-add-media" aria-label="Add media"><option value="">+ Media…</option></select>
+        <button id="rot-add-story" type="button">+ Instagram story</button>
+        <button id="rot-add-posts" type="button">+ Instagram posts</button>
+      </div>
+      <p class="hint">Each screen shows for 5 to 999 seconds. For the PR whiteboard the time is per page, and every page is shown in turn. For the Instagram story it is per story; when there's no story from the last 24 hours, that screen is skipped. A video loops until its time is up. Untick "On" to keep a screen in the list without showing it.</p>
+      <div class="savebar" id="rot-bar">
+        <span class="save-state" id="rot-state" aria-live="polite"></span>
+        <span class="spacer"></span>
+        <button id="rot-revert" type="button" class="ghost">Discard</button>
+        <button id="rot-save" type="button" class="primary">Save</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section id="settings" class="tab">
+    <div class="card">
+      <h2>Wall</h2>
+      <div class="form">
+        <label>Title on the PR whiteboard <input id="set-title" maxlength="32"></label>
+        <label>Brightness <span class="range"><input type="range" id="set-brightness" min="5" max="100"><output id="set-brightness-val"></output></span></label>
+        <p id="set-power" class="hint"></p>
+        <label>Athlete order
+          <select id="set-sort">
+            <option value="board">Board order (as arranged on the Athletes tab)</option>
+            <option value="total">Highest total first</option>
+            <option value="name">Name, A to Z</option>
+          </select>
+        </label>
+        <label>Show new PRs in green for <span class="inline"><input type="number" id="set-pr-days" min="0" max="60" step="1" inputmode="numeric" class="secs"> days (0 = off)</span></label>
+        <label>Time zone (sets the date on new PRs)
+          <select id="set-tz">
+            <option value="America/Los_Angeles">Pacific (Los Angeles, San Diego)</option>
+            <option value="America/Denver">Mountain (Denver)</option>
+            <option value="America/Phoenix">Arizona (Phoenix, no daylight saving)</option>
+            <option value="America/Chicago">Central (Chicago)</option>
+            <option value="America/New_York">Eastern (New York)</option>
+            <option value="America/Anchorage">Alaska (Anchorage)</option>
+            <option value="Pacific/Honolulu">Hawaii (Honolulu)</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </label>
+      </div>
+      <div class="savebar" id="set-bar">
+        <span class="save-state" id="set-state" aria-live="polite"></span>
+        <span class="spacer"></span>
+        <button id="set-revert" type="button" class="ghost">Discard</button>
+        <button id="set-save" type="button" class="primary">Save</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Instagram</h2><span id="ig-state" class="muted"></span></div>
+      <p class="hint">The wall shows @thestrengthtank's current story and latest two posts. It needs an access token from a Meta app linked to the gym's Facebook Page (see the setup steps in the design doc). Reels show their cover image; the wall can't play Instagram video.</p>
+      <div class="form">
+        <label class="inline"><input type="checkbox" id="ig-enabled"> Show the Instagram screens</label>
+        <label>Access token <input type="password" id="ig-token" autocomplete="off" placeholder="Paste a new token. Leave blank to keep the current one."></label>
+        <label>Instagram account ID
+          <span class="inline"><input id="ig-account" inputmode="numeric" maxlength="32"> <button type="button" id="ig-find">Find it</button></span>
+        </label>
+        <div id="ig-accounts" class="row" hidden></div>
+        <label>Check for new posts every <span class="inline"><input type="number" id="ig-minutes" min="5" max="1440" step="1" inputmode="numeric" class="secs"> minutes</span></label>
+      </div>
+      <div class="row">
+        <button id="ig-clear" type="button" class="ghost">Remove token</button>
+        <span class="spacer"></span>
+        <button id="ig-refresh" type="button">Refresh now</button>
+        <button id="ig-save" type="button" class="primary">Save</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Admin PIN</h2>
+      <p id="pin-state" class="hint"></p>
+      <div class="form">
+        <label>New PIN, 6 to 12 digits <input type="password" id="set-pin" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password"></label>
+        <label>Type it again <input type="password" id="set-pin2" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password"></label>
+      </div>
+      <div class="row"><span class="spacer"></span><button id="set-pin-save" type="button">Change PIN</button></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<dialog id="pin-dialog" aria-labelledby="pin-title" aria-describedby="pin-why">
+  <form method="dialog" id="pin-form">
+    <h3 id="pin-title">Admin PIN</h3>
+    <p class="muted" id="pin-why">Saving changes needs the wall's admin PIN.</p>
+    <p class="pin-error" id="pin-error" role="alert" hidden></p>
+    <input type="password" id="pin-input" inputmode="numeric" pattern="[0-9]*" autocomplete="current-password" aria-label="PIN" enterkeyhint="done">
+    <div class="row"><button type="button" id="pin-cancel" class="ghost">Cancel</button><span class="spacer"></span><button value="ok" class="primary">Save</button></div>
+  </form>
+</dialog>
+</body>
+</html>

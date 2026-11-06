@@ -1,0 +1,205 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>console behaviour</title>
+<style>body{margin:0} iframe{border:0;width:390px;height:900px}</style>
+<iframe id="f" src="/#athletes"></iframe>
+<script>
+// Drives the console in a 390 px frame (same origin) and posts what it saw to the test server.
+// The server has PIN 246813 set before this page loads, and a fake Instagram behind it.
+const PIN = '246813';
+const results = [];
+const check = (name, ok, detail = '') => results.push({ name, ok: Boolean(ok), detail: String(detail) });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(fn, ms = 5000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const v = fn();
+    if (v) return v;
+    await sleep(25);
+  }
+  return null;
+}
+const type = (input, value) => {
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+};
+
+async function run() {
+  const f = document.getElementById('f');
+  await until(() => f.contentDocument?.querySelector('#ath-table tbody tr'));
+  const doc = f.contentDocument;
+  const $ = (s) => doc.querySelector(s);
+  const win = f.contentWindow;
+
+  // Phone layout: nothing wider than the screen, every visible control is a real tap target.
+  check('no sideways scroll at 390 px', doc.documentElement.scrollWidth <= 390, doc.documentElement.scrollWidth);
+  const small = [...doc.querySelectorAll('#athletes button, #athletes input:not([type=checkbox]), nav a')]
+    .filter((e) => e.offsetParent && e.getBoundingClientRect().height < 44)
+    .map((e) => `${e.tagName}${e.id ? '#' + e.id : ''} ${e.textContent.trim().slice(0, 12)} ${Math.round(e.getBoundingClientRect().height)}`);
+  check('tap targets at least 44 px', small.length === 0, small.slice(0, 5).join('; '));
+
+  // Find an athlete that isn't there: offer to add them by name.
+  type($('#ath-filter'), 'Jess T');
+  check('no-match offers to add', !$('#ath-nomatch').hidden && /Add "Jess T"/.test($('#ath-nomatch').textContent), $('#ath-nomatch').textContent);
+  $('#ath-nomatch button').click();
+  const row = [...doc.querySelectorAll('#ath-table tbody tr')].find((tr) => tr.querySelector('.c-name input').value === 'Jess T');
+  check('added row has the name', row);
+  check('focus goes to the first lift', doc.activeElement === row.querySelector('td.num input'), doc.activeElement?.getAttribute('aria-label'));
+  check('lift box names the athlete', row.querySelector('td.num input').getAttribute('aria-label') === 'Snatch, Jess T');
+  type(row.querySelector('td.num input'), '75');
+
+  check('save bar says unsaved', /Not saved yet: 1 athlete changed/.test($('#ath-state').textContent), $('#ath-state').textContent);
+  check('tab shows unsaved marker', $('#tabs a[href="#athletes"]').classList.contains('dirty'));
+  check('save bar is visible without scrolling', $('#ath-bar').getBoundingClientRect().bottom <= 900 + 1, $('#ath-bar').getBoundingClientRect().bottom);
+
+  // Save: PIN prompt. Wrong PIN asks again with a message; Enter (form submit) means OK.
+  $('#ath-save').click();
+  await until(() => $('#pin-dialog').open);
+  check('PIN prompt opens', $('#pin-dialog').open);
+  $('#pin-input').value = '111111';
+  $('#pin-form').requestSubmit();
+  await until(() => $('#pin-dialog').open && !$('#pin-error').hidden);
+  check('wrong PIN asks again', $('#pin-dialog').open && /didn't work/.test($('#pin-error').textContent), $('#pin-error').textContent);
+  $('#pin-input').value = PIN;
+  $('#pin-form').requestSubmit();
+  await until(() => /Saved at/.test($('#ath-state').textContent));
+  check('saved, with the new athlete', /Saved at/.test($('#ath-state').textContent), $('#ath-state').textContent);
+  check('tab marker cleared', !$('#tabs a[href="#athletes"]').classList.contains('dirty'));
+
+  // Raise the lift: green outline before saving, PR named after.
+  type($('#ath-filter'), 'Jess T');
+  const row2 = [...doc.querySelectorAll('#ath-table tbody tr')].find((tr) => tr.querySelector('.c-name input').value === 'Jess T');
+  const sn = row2.querySelector('td.num input');
+  type(sn, '77.5');
+  check('raised lift outlined as a PR', sn.classList.contains('up'));
+  $('#ath-save').click();
+  await until(() => /Saved at/.test($('#ath-state').textContent) && /PR/.test($('#ath-state').textContent));
+  check('save names the new PR', /New PR: Jess T snatch 77.5 kg/.test($('#ath-state').textContent), $('#ath-state').textContent);
+
+  // "See it" opens the Wall tab held on the page with Jess.
+  const see = [...doc.querySelectorAll('#ath-state button')].find((b) => /See it/.test(b.textContent));
+  check('offers to show it on the preview', see);
+  see?.click();
+  await until(() => /PR whiteboard, page/.test($('#pv-label').textContent));
+  const label = $('#pv-label').textContent;
+  const pageNo = Number((label.match(/page (\d+)/) || [])[1]) - 1;
+  // Board order puts a new athlete last, so Jess is on the last whiteboard page.
+  const pages = Number((label.match(/of (\d+)$/) || [])[1]);
+  check('wall tab is open', $('#wall').classList.contains('active'));
+  check('preview is held', /Held/.test($('#pv-timer').textContent), $('#pv-timer').textContent);
+  check('preview holds the page with Jess', pages > 0 && pageNo === pages - 1, label);
+
+  // Invalid entry: save is refused, focus lands on the bad box.
+  win.location.hash = '#athletes';
+  await sleep(50);
+  type($('#ath-filter'), '');
+  const first = $('#ath-table td.num input');
+  type(first, '80.3');
+  $('#ath-save').click();
+  await sleep(50);
+  check('invalid entry blocks save', /Not saved/.test($('#ath-state').textContent), $('#ath-state').textContent);
+  check('focus moves to the bad box', doc.activeElement === first);
+  check('bad box is aria-invalid', first.getAttribute('aria-invalid') === 'true');
+  $('#ath-revert').click();
+
+  // Cancel on the PIN prompt keeps the edits.
+  win.sessionStorage.clear();
+  // Forget the cached PIN by reloading the frame.
+  await new Promise((r) => {
+    f.addEventListener('load', r, { once: true });
+    f.src = '/?fresh=1#settings'; // a new document, not just a hash change
+  });
+  await until(() => f.contentDocument.querySelector('#set-title').value);
+  const d2 = f.contentDocument;
+  type(d2.querySelector('#set-title'), 'TEST TITLE');
+  d2.querySelector('#set-save').click();
+  await until(() => d2.querySelector('#pin-dialog').open);
+  d2.querySelector('#pin-cancel').click();
+  await until(() => /Not saved:/.test(d2.querySelector('#set-state').textContent));
+  check('cancel closes the PIN prompt', !d2.querySelector('#pin-dialog').open);
+  check('cancel PIN: not saved, edit kept', /Not saved: the admin PIN is needed/.test(d2.querySelector('#set-state').textContent) && d2.querySelector('#set-title').value === 'TEST TITLE', d2.querySelector('#set-state').textContent);
+  d2.querySelector('#set-revert').click();
+  check('discard restores settings', d2.querySelector('#set-title').value !== 'TEST TITLE' && d2.querySelector('#set-save').disabled);
+  const $2 = (sel) => d2.querySelector(sel);
+  const put = (path, body, pin = PIN) =>
+    fetch(path, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': pin } });
+
+  // Settings: the time zone select saves, and the PR highlight follows the wall's date.
+  check('time zone select shows the saved zone', $2('#set-tz').value === 'America/Los_Angeles', $2('#set-tz').value);
+  $2('#set-tz').value = 'America/New_York';
+  $2('#set-tz').dispatchEvent(new Event('change', { bubbles: true }));
+  check('changing the zone marks settings unsaved', !$2('#set-save').disabled);
+  $2('#set-save').click();
+  await until(() => d2.querySelector('#pin-dialog').open);
+  $2('#pin-input').value = PIN;
+  $2('#pin-form').requestSubmit();
+  await until(() => /Saved at/.test($2('#set-state').textContent));
+  const saved = await (await fetch('/api/settings')).json();
+  check('time zone saved on the wall', saved.timezone === 'America/New_York', saved.timezone);
+
+  // PIN change needs 6 to 12 digits and a matching second copy.
+  $2('#set-pin').value = '1234';
+  $2('#set-pin2').value = '1234';
+  $2('#set-pin-save').click();
+  check('short PIN refused in the page', /6 to 12 digits/.test($2('#toast').textContent), $2('#toast').textContent);
+
+  // Someone else saves the athletes first: edits stay, "Load the latest" is offered.
+  f.contentWindow.location.hash = '#athletes';
+  await sleep(50);
+  const lift = $2('#ath-table td.num input');
+  const original = lift.value;
+  type(lift, '99');
+  const now = await (await fetch('/api/athletes')).json();
+  check('athletes come with a rev', Number.isInteger(now.rev), JSON.stringify(now).slice(0, 40));
+  await put('/api/athletes', now);
+  $2('#ath-save').click();
+  await until(() => /someone else saved/.test($2('#ath-state').textContent));
+  check('stale save says someone else saved', /someone else saved/.test($2('#ath-state').textContent), $2('#ath-state').textContent);
+  check('stale save keeps the edit', $2('#ath-table td.num input').value === '99' && !$2('#ath-save').disabled);
+  const latest = [...d2.querySelectorAll('#ath-state button')].find((b) => /Load the latest/.test(b.textContent));
+  check('offers to load the latest', latest);
+  f.contentWindow.confirm = () => true;
+  latest?.click();
+  await until(() => /Loaded the latest/.test($2('#ath-state').textContent));
+  check('load the latest discards the edit', $2('#ath-table td.num input').value === original && $2('#ath-save').disabled, $2('#ath-table td.num input').value);
+  type($2('#ath-table td.num input'), String(Number(original || 0) + 5));
+  $2('#ath-save').click();
+  await until(() => /Saved at/.test($2('#ath-state').textContent));
+  check('saving after reload works', /Saved at/.test($2('#ath-state').textContent), $2('#ath-state').textContent);
+
+  // Instagram: refresh and "Find it" run on the wall in the background; the page polls.
+  await put('/api/instagram', { access_token: 'EAAB-e2e', account_id: '17841400000000001' });
+  f.contentWindow.location.hash = '#settings';
+  await sleep(50);
+  $2('#ig-refresh').click();
+  check('refresh button disabled while the wall works', await until(() => $2('#ig-refresh').disabled, 2000));
+  await until(() => /Fetched 2 stories/.test($2('#toast').textContent), 8000);
+  check('refresh reports what it fetched', /Fetched 2 stories and 2 posts/.test($2('#toast').textContent), $2('#toast').textContent);
+  check('refresh button back', !$2('#ig-refresh').disabled);
+  $2('#ig-find').click();
+  await until(() => $2('#ig-accounts button'), 8000);
+  check('find it lists the account', /@thestrengthtank/.test($2('#ig-accounts').textContent), $2('#ig-accounts').textContent);
+
+  // Wall tab: diagnostics and what's showing.
+  f.contentWindow.location.hash = '#wall';
+  await until(() => /Showing/.test($2('#status').textContent));
+  check('status shows what the wall is showing', /Showing/.test($2('#status').textContent), $2('#status').textContent);
+  check('diagnostics start collapsed', !$2('#diag').open);
+  check('diagnostics list the firmware', /0\.0\.0-mock/.test($2('#diag-list').textContent), $2('#diag-list').textContent.slice(0, 80));
+
+  // Lockout: five wrong PINs from this computer, then a save shows the wait.
+  for (let i = 0; i < 5; i++) await put('/api/settings', { brightness: 40 }, '000000');
+  f.contentWindow.location.hash = '#settings';
+  await sleep(50);
+  type($2('#set-title'), 'LOCKED OUT');
+  $2('#set-save').click();
+  await until(() => !$2('#lock').hidden);
+  check('lockout banner shows the wait', !$2('#lock').hidden && /locked on the wall for (29|30) s/.test($2('#lock-msg').textContent), $2('#lock-msg').textContent);
+  check('lockout keeps the edit', $2('#set-title').value === 'LOCKED OUT' && /Too many wrong PINs/.test($2('#set-state').textContent), $2('#set-state').textContent);
+  check('no PIN prompt while locked', !$2('#pin-dialog').open);
+}
+
+run()
+  .catch((e) => check('harness', false, e.stack))
+  .finally(() => fetch('/__test__/result', { method: 'POST', body: JSON.stringify(results) }));
+</script>

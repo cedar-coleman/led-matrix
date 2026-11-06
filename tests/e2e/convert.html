@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>media conversion e2e</title>
+<script src="/vendor/omggif.js"></script>
+<script type="module">
+  // Converts each fixture with the real media.js and uploads it with the real API, then
+  // reports back to the test runner. Driven by tests/run_e2e.py.
+  import { openSource, convert } from '/media.js';
+  import { estimateSupplyAmps } from '/power.js';
+  const PIN = '246813'; // set by run_e2e.py before this page loads
+
+  const cases = [
+    { file: 'clip.mp4', type: 'video/mp4', opts: { start: 0, end: 3, fps: 15 } },
+    { file: 'clip.webm', type: 'video/webm', opts: { start: 1, end: 2, fps: 10 } },
+    { file: 'anim.gif', type: 'image/gif', opts: {} },
+    { file: 'still.png', type: 'image/png', opts: { fit: 'contain' } },
+  ];
+  const results = [];
+  for (const c of cases) {
+    try {
+      const blob = await (await fetch(`/__test__/fixtures/${c.file}`)).blob();
+      const src = await openSource(new File([blob], c.file, { type: c.type }));
+      const out = await convert(src, { fit: 'cover', zoom: 1, panX: 0.5, panY: 0.5, ...c.opts });
+      const name = c.file.replace(/\W/g, '-') + '.gif';
+      const amps = estimateSupplyAmps(out.peakFrame, 100);
+      const peak = Math.max(amps.a, amps.b);
+      const res = await fetch(`/api/media?name=${name}&frames=${out.frames}&peak_a=${peak.toFixed(2)}`, { method: 'POST', body: out.blob, headers: { 'Content-Type': 'image/gif', 'X-Admin-Pin': PIN } });
+      results.push({ file: c.file, kind: src.kind, frames: out.frames, bytes: out.blob.size, status: res.status, uploaded: name, peak_a: peak });
+    } catch (e) {
+      results.push({ file: c.file, error: String(e) });
+    }
+  }
+  await fetch('/__test__/result', { method: 'POST', body: JSON.stringify(results) });
+</script>

@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>phone width</title>
+<style>body{margin:0;background:#000} iframe{border:0;width:390px;height:1700px;display:block}</style>
+<iframe id="f"></iframe>
+<script>
+// phone.html#tab or phone.html#tab&act=name: the act puts the page in a state worth a screenshot.
+const [tab, ...rest] = location.hash.slice(1).split('&');
+const params = new URLSearchParams(rest.join('&'));
+const act = params.get('act');
+const PIN = '246813';
+// The frame shares this page's session storage, so the console starts with the PIN remembered.
+if (params.get('pin')) sessionStorage.setItem('wall_admin_pin', params.get('pin'));
+const f = document.getElementById('f');
+f.src = '/#' + tab;
+const put = (path, body, pin) =>
+  fetch(path, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': pin } });
+const acts = {
+  // Raise one lift and break another, so the save bar, the green "new PR" outline and
+  // the red invalid box all show.
+  unsaved(doc) {
+    const inputs = doc.querySelectorAll('#ath-table td.num input');
+    inputs[0].value = '95';
+    inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+    inputs[1].value = '112.3';
+    inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+  },
+  find(doc) {
+    const q = doc.getElementById('ath-filter');
+    q.value = 'jess';
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+  diag(doc) {
+    doc.getElementById('diag').open = true;
+    doc.getElementById('diag').scrollIntoView();
+  },
+  // Someone else saves first: the save bar offers "Load the latest" and the edit stays.
+  async stale(doc) {
+    const input = doc.querySelector('#ath-table td.num input');
+    input.value = '99';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const now = await (await fetch('/api/athletes')).json();
+    await put('/api/athletes', now, PIN);
+    doc.getElementById('ath-save').click();
+  },
+  // Five wrong PINs from this computer, then a save: the lockout banner.
+  async locked(doc) {
+    for (let i = 0; i < 5; i++) await put('/api/settings', { brightness: 40 }, '000000');
+    const input = doc.querySelector('#ath-table td.num input');
+    input.value = '99';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    doc.getElementById('ath-save').click();
+  },
+};
+f.addEventListener('load', () => {
+  if (!acts[act]) return;
+  const doc = f.contentDocument;
+  const wait = () => (doc.querySelector('#ath-table tbody tr') ? acts[act](doc) : setTimeout(wait, 50));
+  wait();
+});
+</script>
