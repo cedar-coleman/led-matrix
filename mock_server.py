@@ -52,7 +52,12 @@ PIN_ITER = 10000
 SORTS = ("board", "total", "name")
 TIMEZONES = ("America/Los_Angeles", "America/Denver", "America/Phoenix", "America/Chicago",
              "America/New_York", "America/Anchorage", "Pacific/Honolulu", "UTC")
-SLIDE_TYPES = ("whiteboard", "media", "instagram_story", "instagram_posts")
+SLIDE_TYPES = ("whiteboard", "media", "instagram_story", "instagram_posts", "new_prs", "announcements")
+MAX_ANNOUNCEMENTS = 50
+MAX_ANNOUNCE_CHARS = 200
+MAX_ANNOUNCE_BREAKS = 6
+DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+WELCOME = {"id": "n1", "text": "Welcome to The Strength Tank", "enabled": True, "start_date": None, "end_date": None}
 GRAPH = "https://graph.facebook.com/v23.0"
 STORY_SIZE = (54, 96)
 POST_SIZE = (78, 78)
@@ -74,9 +79,20 @@ GLOBAL_WINDOW_S = 10 * 60
 GLOBAL_LOCK_S = 15 * 60
 MAX_CLIENTS = 64
 
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+HHMM = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+# Far enough to cross a whole week plus a daylight-saving hour; a schedule with no change
+# inside it never changes (every day off, or on all day every day).
+SCHEDULE_HORIZON_S = 8 * 86400
+DEFAULT_SCHEDULE = {"enabled": False, "days": {d: [{"start": "05:00", "end": "21:00"}] for d in DAYS}}
+DEFAULT_POWER = {"supplies": 2, "rated_a": 18, "budget_pct": 85}  # two LRS-100-5s, as wired today
+CONTROL_ACTIONS = ("next", "prev", "pause", "resume", "wake", "sleep")
+
 DEFAULT_SETTINGS = {
     "title": "THE STRENGTH TANK", "brightness": 50, "sort": "board", "pr_highlight_days": 7,
-    "timezone": "America/Los_Angeles", "pin_salt": None, "pin_hash": None, "pin_iter": None,
+    "timezone": "America/Los_Angeles", "schedule": DEFAULT_SCHEDULE, "power": DEFAULT_POWER,
+    "pin_salt": None, "pin_hash": None, "pin_iter": None,
 }
 DEFAULT_INSTAGRAM = {
     "enabled": True, "account_id": "", "access_token": "", "username": "thestrengthtank",
@@ -108,12 +124,136 @@ def is_kg(v):
     )
 
 
+def deep(v):
+    """A copy that shares nothing with the defaults, so no save can edit them."""
+    return json.loads(json.dumps(v))
+
+
 def iso_utc(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def hash_pin(pin, salt_hex, iterations):
     return hashlib.pbkdf2_hmac("sha256", pin.encode(), bytes.fromhex(salt_hex), iterations).hex()
+
+
+# --- display schedule (API.md 7.4) -----------------------------------------------------------
+
+def minutes(hhmm):
+    return 1440 if hhmm == "24:00" else int(hhmm[:2]) * 60 + int(hhmm[3:])
+
+
+def validate_schedule(v):
+    """settings.schedule, cleaned: windows sorted by start, unknown keys dropped."""
+    if not isinstance(v, dict):
+        raise ApiError(400, "Schedule must be an object with enabled and days")
+    if not isinstance(v.get("enabled"), bool):
+        raise ApiError(400, "Schedule enabled must be true or false")
+    days = v.get("days")
+    if not isinstance(days, dict) or any(d not in days for d in DAYS):
+        raise ApiError(400, "Schedule days must list mon, tue, wed, thu, fri, sat and sun")
+    clean = {}
+    for key, name in zip(DAYS, DAY_NAMES):
+        windows = days[key]
+        if not isinstance(windows, list) or len(windows) > 2:
+            raise ApiError(400, f"{name}: give a list of 0 to 2 time ranges", day=key)
+        out = []
+        for w in windows:
+            start = w.get("start") if isinstance(w, dict) else None
+            end = w.get("end") if isinstance(w, dict) else None
+            # fullmatch: re's $ would also accept a trailing newline, which the device refuses.
+            if not isinstance(start, str) or not isinstance(end, str) or not HHMM.fullmatch(start) or not (
+                    HHMM.fullmatch(end) or end == "24:00"):
+                raise ApiError(400, f"{name}: times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)", day=key)
+            if minutes(end) <= minutes(start):
+                raise ApiError(400, f"{name}: a time range must end after it starts", day=key)
+            out.append({"start": start, "end": end})
+        out.sort(key=lambda w: minutes(w["start"]))
+        if len(out) == 2 and minutes(out[0]["end"]) > minutes(out[1]["start"]):
+            raise ApiError(400, f"{name}: the two time ranges overlap", day=key)
+        clean[key] = out
+    return {"enabled": v["enabled"], "days": clean}
+
+
+def schedule_or_off(v):
+    """A stored schedule the API would accept, else one that never switches the wall off
+    (a hand-edited file must not leave the wall dark)."""
+    try:
+        return validate_schedule(v)
+    except ApiError:
+        return {"enabled": False, "days": {d: [] for d in DAYS}}
+
+
+def scheduled_on(schedule, tz, t):
+    """Whether the schedule has the wall on at Unix time t (seconds)."""
+    local = datetime.fromtimestamp(t, tz)
+    sod = local.hour * 3600 + local.minute * 60 + local.second
+    return any(minutes(w["start"]) * 60 <= sod < minutes(w["end"]) * 60 for w in schedule["days"][DAYS[local.weekday()]])
+
+
+def next_flip(schedule, tz, start, value):
+    """First Unix time >= start where scheduled_on is not `value`, or None within the horizon.
+
+    The reference version: every boundary is a whole local minute and every daylight-saving
+    change in the eight zones is a whole UTC hour, so checking each minute finds the exact
+    instant. netcore jumps between boundaries instead and is tested against this scan.
+    """
+    if scheduled_on(schedule, tz, start) != value:
+        return start
+    t = (start // 60 + 1) * 60
+    while t <= start + SCHEDULE_HORIZON_S:
+        if scheduled_on(schedule, tz, t) != value:
+            return t
+        t += 60
+    return None
+
+
+def local_iso(t, tz):
+    return datetime.fromtimestamp(t, tz).isoformat()
+
+
+def schedule_status(schedule, tz, now, time_valid, override):
+    """(display_on, schedule_state, next_change Unix time or None, override still in force).
+
+    `override` is None or {"on": bool, "until": Unix time or None}; None means it lasts
+    until the next wake, sleep or schedule save. An override past its time is dropped.
+    """
+    if override and override["until"] is not None and now >= override["until"]:
+        override = None
+    active = schedule["enabled"] and time_valid
+    if override:
+        nxt = next_flip(schedule, tz, override["until"], override["on"]) if active and override["until"] is not None else None
+        return override["on"], "override_on" if override["on"] else "override_off", nxt, override
+    if not schedule["enabled"]:
+        return True, "always_on", None, None
+    if not time_valid:
+        return True, "no_clock", None, None  # fail open: never dark because the clock is lost
+    on = scheduled_on(schedule, tz, now)
+    return on, "on" if on else "off", next_flip(schedule, tz, now, on), None
+
+
+def override_for(schedule, tz, now, time_valid, wake):
+    """What "wake" (True) or "sleep" sets: on or off until the next scheduled change.
+    None when the schedule already has the wall that way (a wake while on clears a sleep)."""
+    if schedule["enabled"] and time_valid:
+        on = scheduled_on(schedule, tz, now)
+        return None if on == wake else {"on": wake, "until": next_flip(schedule, tz, now, on)}
+    # No schedule in force (off, or no clock): the wall is on, so only a sleep is kept,
+    # and it lasts until a wake.
+    return None if wake else {"on": False, "until": None}
+
+
+def validate_power(v):
+    if not isinstance(v, dict):
+        raise ApiError(400, "Power must be an object with supplies, rated_a and budget_pct")
+    if not is_int(v.get("supplies")) or v["supplies"] not in (1, 2):
+        raise ApiError(400, "Power supplies must be 1 or 2")
+    r = v.get("rated_a")
+    if not isinstance(r, (int, float)) or isinstance(r, bool) or not 5 <= r <= 100:
+        raise ApiError(400, "Supply rating must be 5 to 100 A")
+    if not is_int(v.get("budget_pct")) or not 50 <= v["budget_pct"] <= 95:
+        raise ApiError(400, "Power budget must be 50 to 95 percent")
+    return {"supplies": v["supplies"], "rated_a": r, "budget_pct": v["budget_pct"]}
 
 
 class PinGuard:
@@ -167,6 +307,7 @@ class Store:
         self.media = self.dir / "media"
         self.lock = threading.RLock()
         self.control = {"paused": False, "last_action": None}
+        self.override = None  # wake/sleep: {"on", "until"}; RAM only, like the device
         # Injectable for tests: monotonic seconds (lockout) and wall-clock UTC (dates).
         self.clock = time.monotonic
         self.utcnow = lambda: datetime.now(timezone.utc)
@@ -183,7 +324,7 @@ class Store:
         self.media.mkdir(parents=True, exist_ok=True)
         self.clean_leftovers()
         self.seed()
-        for name in ("settings", "athletes", "playlist", "instagram", "media_index"):
+        for name in ("settings", "athletes", "playlist", "announcements", "instagram", "media_index"):
             self.read(name)  # finds corrupt files at start, not on first use
         self.prune_generations()
 
@@ -196,11 +337,13 @@ class Store:
 
     def defaults(self, name):
         if name == "settings":
-            return dict(DEFAULT_SETTINGS)
+            return deep(DEFAULT_SETTINGS)
         if name == "athletes":
             return {"rev": 1, "athletes": []}
         if name == "playlist":
             return {"rev": 1, "slides": []}
+        if name == "announcements":
+            return {"rev": 1, "announcements": []}
         if name == "instagram":
             return json.loads(json.dumps(DEFAULT_INSTAGRAM))
         if name == "media_index":
@@ -250,7 +393,7 @@ class Store:
 
     def seed(self):
         if not self.path("settings").exists():
-            self.write("settings", dict(DEFAULT_SETTINGS))
+            self.write("settings", deep(DEFAULT_SETTINGS))
         if not self.path("athletes").exists():
             athletes = []
             csv_path = ROOT / "athletes-from-chalkboard.csv"
@@ -258,12 +401,14 @@ class Store:
                 with open(csv_path, newline="") as f:
                     for i, row in enumerate(csv.DictReader(f), 1):
                         a = {"id": f"a{i}", "name": row["name"], "notes": row.get("notes", ""),
-                             "visible": True, "pr_dates": {}}
+                             "visible": True, "pr_dates": {}, "pr_prev": {}}
                         for k in LIFTS:
                             v = row.get(f"{k}_kg", "").strip()
                             a[k] = (float(v) if "." in v else int(v)) if v else None
                         athletes.append(a)
             self.write("athletes", {"rev": 1, "athletes": athletes})
+        if not self.path("announcements").exists():
+            self.write("announcements", {"rev": 1, "announcements": [deep(WELCOME)]})
         if not self.path("instagram").exists():
             self.write("instagram", self.defaults("instagram"))
             self.load_samples()
@@ -275,6 +420,8 @@ class Store:
                 index["strength-tank-logo.gif"] = {"frames": 1, "peak_a": None, "uploaded": date.today().isoformat()}
             self.write("media_index", index)
             slides = [{"id": "s1", "type": "whiteboard", "duration_s": 8, "enabled": True},
+                      {"id": "s4", "type": "new_prs", "duration_s": 8, "enabled": True},
+                      {"id": "s5", "type": "announcements", "duration_s": 8, "enabled": True},
                       {"id": "s2", "type": "instagram_story", "duration_s": 6, "enabled": True},
                       {"id": "s3", "type": "instagram_posts", "duration_s": 10, "enabled": True}]
             if index:
@@ -290,7 +437,7 @@ class Store:
 
     # --- settings and time --------------------------------------------------
     def settings(self):
-        return DEFAULT_SETTINGS | self.read("settings")
+        return deep(DEFAULT_SETTINGS) | self.read("settings")
 
     def settings_public(self, s=None):
         s = s or self.settings()
@@ -301,7 +448,25 @@ class Store:
         if not self.time_valid:
             return None
         tz = self.settings().get("timezone")
-        return self.utcnow().astimezone(ZoneInfo(tz if tz in TIMEZONES else TIMEZONES[0])).date().isoformat()
+        return self.utcnow().astimezone(self.zone()).date().isoformat()
+
+    def zone(self):
+        tz = self.settings().get("timezone")
+        return ZoneInfo(tz if tz in TIMEZONES else TIMEZONES[0])
+
+    def display_state(self):
+        """(display_on, schedule_state, next_change) now, dropping an override that ran out."""
+        with self.lock:
+            tz = self.zone()
+            on, state, nxt, self.override = schedule_status(
+                schedule_or_off(self.settings()["schedule"]), tz, int(self.utcnow().timestamp()), self.time_valid,
+                self.override)
+            return on, state, (local_iso(nxt, tz) if nxt is not None else None)
+
+    def wake_or_sleep(self, wake):
+        with self.lock:
+            self.override = override_for(schedule_or_off(self.settings()["schedule"]), self.zone(),
+                                         int(self.utcnow().timestamp()), self.time_valid, wake)
 
     # --- auth ---------------------------------------------------------------
     @staticmethod
@@ -541,6 +706,7 @@ class Store:
         return {"slide_id": s["id"], "type": s["type"], "file": s.get("file")}
 
     def status(self):
+        display_on, schedule_state, next_change = self.display_state()
         return {
             "mock": True,
             "fw_version": FW_VERSION,
@@ -549,6 +715,9 @@ class Store:
             "reset_reason": "poweron",
             "paused": self.control["paused"],
             "last_action": self.control["last_action"],
+            "display_on": display_on,
+            "schedule_state": schedule_state,
+            "next_change": next_change,
             "now_playing": self.now_playing(),
             "storage": self.storage(),
             "wifi": {"ssid": "(mock)", "rssi": -58},
@@ -564,7 +733,7 @@ class Store:
 
 
 def validate_athletes(body):
-    """Shape and values. pr_dates from the client are ignored: the server stamps them."""
+    """Shape and values. pr_dates and pr_prev from the client are ignored: the server stamps them."""
     items = body["athletes"]
     if len(items) > 500:
         raise ApiError(400, "At most 500 athletes")
@@ -594,21 +763,24 @@ def validate_athletes(body):
 
 def stamp_prs(athletes, before, today):
     """Server-side PR dates. Existing athlete: a lift that went up, or was filled in for the
-    first time, gets today's date (in the wall's zone); other stored dates are kept. New
-    athletes start with none. today None (clock not set) stamps nothing."""
+    first time, gets today's date (in the wall's zone) and pr_prev records the value it
+    replaced (None when there was none); other stored dates and previous values are kept.
+    New athletes start with neither. today None (clock not set) stamps nothing."""
     old = {a["id"]: a for a in before}
     for a in athletes:
         o = old.get(a["id"])
         if o is None:
-            a["pr_dates"] = {}
+            a["pr_dates"], a["pr_prev"] = {}, {}
             continue
         dates = {k: v for k, v in (o.get("pr_dates") or {}).items() if k in LIFTS}
+        prev = {k: v for k, v in (o.get("pr_prev") or {}).items() if k in LIFTS}
         if today:
             for lift in LIFTS:
                 v, ov = a[lift], o.get(lift)
                 if v is not None and (ov is None or v > ov):
                     dates[lift] = today
-        a["pr_dates"] = dates
+                    prev[lift] = ov
+        a["pr_dates"], a["pr_prev"] = dates, prev
     return athletes
 
 
@@ -631,6 +803,48 @@ def validate_playlist(body, media_names):
         elif clean["type"] not in SLIDE_TYPES:
             raise ApiError(400, f"Slide {i}: type must be one of {', '.join(SLIDE_TYPES)}")
         out.append(clean)
+    return out
+
+
+def valid_date(v):
+    """A real calendar day written YYYY-MM-DD (fullmatch: no trailing newline)."""
+    if not isinstance(v, str) or not DATE_RE.fullmatch(v):
+        return False
+    try:
+        date.fromisoformat(v)
+    except ValueError:
+        return False
+    return True
+
+
+def validate_announcements(body):
+    """Each announcement cleaned: text trimmed, dates null when blank, unknown fields dropped."""
+    items = body["announcements"]
+    if len(items) > MAX_ANNOUNCEMENTS:
+        raise ApiError(400, f"At most {MAX_ANNOUNCEMENTS} announcements")
+    seen, out = set(), []
+    for i, a in enumerate(items, 1):
+        if not isinstance(a, dict):
+            raise ApiError(400, f"Announcement {i} is not an object")
+        aid = a.get("id")
+        if not isinstance(aid, str) or not ID_RE.fullmatch(aid) or aid in seen:
+            raise ApiError(400, f"Announcement {i}: missing or duplicate id")
+        seen.add(aid)
+        text = a.get("text")
+        text = text.strip() if isinstance(text, str) else ""
+        if not text or len(text) > MAX_ANNOUNCE_CHARS:
+            raise ApiError(400, f"Announcement {i}: text must be 1 to {MAX_ANNOUNCE_CHARS} characters")
+        if text.count("\n") > MAX_ANNOUNCE_BREAKS:
+            raise ApiError(400, f"Announcement {i}: at most {MAX_ANNOUNCE_BREAKS} line breaks")
+        dates = {}
+        for key, label in (("start_date", "start"), ("end_date", "end")):
+            v = a.get(key)
+            if v is not None and v != "" and not valid_date(v):
+                raise ApiError(400, f"Announcement {i}: the {label} date must be YYYY-MM-DD or blank")
+            dates[key] = v or None
+        if dates["start_date"] and dates["end_date"] and dates["end_date"] < dates["start_date"]:
+            raise ApiError(400, f"Announcement {i}: the end date is before the start date")
+        out.append({"id": aid, "text": text, "enabled": a.get("enabled", True) is not False, **dates})
     return out
 
 
@@ -790,6 +1004,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return st.read_revisioned("playlist")
             if method == "PUT":
                 return self.put_playlist(self.object_body("slides"))
+        if path == "/api/announcements":
+            if method == "GET":
+                return st.read_revisioned("announcements")
+            if method == "PUT":
+                return self.put_announcements(self.object_body("announcements"))
         if path == "/api/settings":
             if method == "GET":
                 return st.settings_public()
@@ -814,11 +1033,13 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/control" and method == "POST":
             body = self.json_body()
             action = body.get("action") if isinstance(body, dict) else None
-            if action not in ("next", "prev", "pause", "resume"):
-                raise ApiError(400, "action must be next, prev, pause or resume")
+            if action not in CONTROL_ACTIONS:
+                raise ApiError(400, "action must be next, prev, pause, resume, wake or sleep")
             st.control["last_action"] = action
             if action in ("pause", "resume"):
                 st.control["paused"] = action == "pause"
+            if action in ("wake", "sleep"):
+                st.wake_or_sleep(action == "wake")
             return {"ok": True}
         if path == "/api/media":
             if method == "GET":
@@ -847,6 +1068,15 @@ class Handler(SimpleHTTPRequestHandler):
             names = {p.name for p in st.media.glob("*.gif")}
             out = {"rev": cur["rev"] + 1, "slides": validate_playlist(body, names)}
             st.write("playlist", out)
+        return out
+
+    def put_announcements(self, body):
+        st = self.store
+        with st.lock:
+            cur = st.read_revisioned("announcements")
+            check_rev(body, cur["rev"])
+            out = {"rev": cur["rev"] + 1, "announcements": validate_announcements(body)}
+            st.write("announcements", out)
         return out
 
     def put_instagram(self, body):
@@ -901,6 +1131,10 @@ class Handler(SimpleHTTPRequestHandler):
                 if body["timezone"] not in TIMEZONES:
                     raise ApiError(400, f"Time zone must be one of {', '.join(TIMEZONES)}")
                 s["timezone"] = body["timezone"]
+            if "schedule" in body:
+                s["schedule"] = validate_schedule(body["schedule"])
+            if "power" in body:
+                s["power"] = validate_power(body["power"])
             if "new_pin" in body:
                 pin = body["new_pin"]
                 if not isinstance(pin, str) or not PIN_RE.match(pin):
@@ -909,6 +1143,8 @@ class Handler(SimpleHTTPRequestHandler):
                 s["pin_iter"] = PIN_ITER
                 s["pin_hash"] = hash_pin(pin, s["pin_salt"], PIN_ITER)
             st.write("settings", s)
+            if "schedule" in body:
+                st.override = None  # a new schedule starts clean
         return st.settings_public(s)
 
     def upload(self, query):

@@ -7,14 +7,21 @@ import {
 } from './layout.js';
 import { LedView } from './ledview.js';
 import { openSource, convert, clipFrames, fileNameFor, MAX_CLIP_SECONDS } from './media.js';
-import { estimateSupplyAmps, slideBrightness, SUPPLY_BUDGET_A, PANEL_FULL_WHITE_A } from './power.js';
+import { estimateSupplyAmps, slideBrightness, supplyBudgetA, DEFAULT_POWER, PANEL_FULL_WHITE_A } from './power.js';
 import { renderStorySlide, renderPostsSlide, STORY_W, STORY_H, POST_SIZE } from './igslides.js';
+import { recentPrs, renderPrSlide, MAX_PR_SCREENS } from './prslides.js';
+import {
+  announcementActive, announcementScreens, renderAnnouncement, fitAnnouncement, unshownChars, plainText,
+  MAX_ANNOUNCE_SCREENS, MAX_ANNOUNCEMENTS, MAX_ANNOUNCE_CHARS, MAX_ANNOUNCE_BREAKS,
+} from './announceslides.js';
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const DEFAULT_WB_SECONDS = 8;
 const DEFAULT_MEDIA_SECONDS = 10;
 const DEFAULT_STORY_SECONDS = 6;
 const DEFAULT_POSTS_SECONDS = 10;
+const DEFAULT_PRS_SECONDS = 8;
+const DEFAULT_ANN_SECONDS = 8;
 const LIFT_NAMES = { snatch: 'Snatch', clean_jerk: 'Clean & jerk', total: 'Total', back_squat: 'Back squat', front_squat: 'Front squat' };
 const LIFT_SHORT = { snatch: 'Snatch', clean_jerk: 'C&J', total: 'Total', back_squat: 'Back sq.', front_squat: 'Front sq.' };
 
@@ -53,6 +60,12 @@ function wallToday() {
   const d = state.status?.local_date;
   const m = typeof d === 'string' && d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date();
+}
+
+// The date New PRs screens are judged against. Unlike the whiteboard's green, there is no
+// fallback to the phone: a wall without a clock skips them, so the preview does too.
+function prToday() {
+  return state.status?.time_valid === false ? null : wallToday();
 }
 
 function kb(bytes) {
@@ -263,9 +276,14 @@ const state = {
   slides: [],
   slidesSaved: [],
   slidesRev: 0,
+  announcements: [],
+  announcementsSaved: [],
+  announcementsRev: 0,
   status: null, // last GET /api/status
-  settings: {},
+  settings: {}, // GET /api/settings without `schedule`, which has its own card and save
   settingsSaved: {},
+  schedule: null,
+  scheduleSaved: null,
   media: { files: [], storage: { used_bytes: 0, total_bytes: 1, usable_bytes: 1 } },
   instagram: { enabled: false, stories: [], posts: [], username: 'thestrengthtank' },
   version: 0, // bumped on every edit that changes what the wall shows
@@ -286,13 +304,19 @@ function athletesDirty() {
 function rotationDirty() {
   return !same(state.slides, state.slidesSaved);
 }
+function announcementsDirty() {
+  return !same(state.announcements, state.announcementsSaved);
+}
 function settingsDirty() {
   return !same(state.settings, state.settingsSaved);
+}
+function scheduleDirty() {
+  return !same(state.schedule, state.scheduleSaved);
 }
 
 // What each save bar says when nothing is waiting. Set after a save, so the coach can
 // see it went through after the toast has gone.
-const savedNote = { ath: null, rot: null, set: null };
+const savedNote = { ath: null, rot: null, set: null, sch: null, ann: null };
 
 function changedAthleteCount() {
   const before = new Map(state.athletesSaved.map((a) => [a.id, a]));
@@ -319,6 +343,10 @@ function setBar(key, dirty, dirtyText, tab) {
     state_.replaceChildren(...(savedNote[key] ?? ['All changes saved']));
     state_.dataset.mode = 'clean';
   }
+  if (tab) markTab(tab, dirty);
+}
+
+function markTab(tab, dirty) {
   const link = document.querySelector(`#tabs a[href="#${tab}"]`);
   link.classList.toggle('dirty', dirty);
   link.querySelector('.sr-only').textContent = dirty ? ' (unsaved changes)' : '';
@@ -328,7 +356,10 @@ function updateDirty() {
   const n = athletesDirty() ? Math.max(1, changedAthleteCount()) : 0;
   setBar('ath', n > 0, `Not saved yet: ${n} ${n === 1 ? 'athlete' : 'athletes'} changed`, 'athletes');
   setBar('rot', rotationDirty(), 'Not saved yet', 'rotation');
-  setBar('set', settingsDirty(), 'Not saved yet', 'settings');
+  setBar('ann', announcementsDirty(), 'Not saved yet', 'notices');
+  setBar('set', settingsDirty(), 'Not saved yet', null);
+  setBar('sch', scheduleDirty(), 'Not saved yet', null);
+  markTab('settings', settingsDirty() || scheduleDirty());
 }
 
 // A save that failed: say so in the bar, where it stays until the next edit or save.
@@ -376,6 +407,25 @@ function currentFit() {
 
 function wbOptions() {
   return { title: state.settings.title ?? '', prDays: state.settings.pr_highlight_days ?? 0, today: wallToday() };
+}
+
+// Everyone with a PR inside the highlight window, newest first (not capped).
+let prCache = { version: -1, list: [] };
+function allRecentPrs() {
+  if (prCache.version !== state.version) {
+    prCache = { version: state.version, list: recentPrs(state.athletes, state.settings.pr_highlight_days ?? 0, prToday()) };
+  }
+  return prCache.list;
+}
+
+// The athletes that get a New PRs screen in one pass.
+function prScreens() {
+  return allRecentPrs().slice(0, MAX_PR_SCREENS);
+}
+
+function prBuffer(index) {
+  const list = prScreens();
+  return list[index] ? renderPrSlide({ entry: list[index], index, count: list.length, today: prToday() }) : new Uint8ClampedArray(256 * 96 * 4).fill(0);
 }
 
 function whiteboardSeconds() {
@@ -439,7 +489,7 @@ function igActive() {
 
 // ---------------------------------------------------------------- tabs
 
-const TABS = ['wall', 'athletes', 'media', 'rotation', 'settings'];
+const TABS = ['wall', 'athletes', 'notices', 'media', 'rotation', 'settings'];
 const TAB_KEY = 'wall_last_tab';
 
 // With no #tab in the address, open the tab used last on this phone (usually Athletes).
@@ -472,6 +522,7 @@ function showTab() {
     stopPreview();
   }
   if (tab === 'athletes') renderFit();
+  if (tab === 'notices') renderAnnouncements();
   if (tab === 'rotation') renderRotation();
   if (tab === 'settings') renderPowerNote();
 }
@@ -541,8 +592,9 @@ function athleteRow(a, i) {
     markUp(input, lift);
     liftInputs[lift] = input;
     const prDate = a.pr_dates?.[lift];
+    const prev = a.pr_prev?.[lift];
     const dot = isRecentPr(a, lift, state.settings.pr_highlight_days, wallToday())
-      ? el('span', { class: 'pr-dot', title: `New PR on ${prDate}` }, '●')
+      ? el('span', { class: 'pr-dot', title: `New PR on ${prDate}${prev != null ? `, up from ${formatKg(prev)} kg` : ''}` }, '●')
       : null;
     const label = el('span', { class: 'c-label', 'aria-hidden': 'true' }, LIFT_SHORT[lift]);
     if (lift !== 'total') return el('td', { class: 'num' }, label, input, dot);
@@ -719,9 +771,9 @@ async function saveAthletes() {
     return toast('Fix the boxes outlined in red, then save.', true);
   }
 
-  // The wall stamps PR dates itself, in its own time zone; pr_dates aren't sent.
+  // The wall stamps PR dates and previous values itself, in its own time zone; they aren't sent.
   const before = new Map(state.athletesSaved.map((a) => [a.id, a]));
-  const out = state.athletes.map(({ pr_dates, ...a }) => ({ ...a, name: a.name.trim() }));
+  const out = state.athletes.map(({ pr_dates, pr_prev, ...a }) => ({ ...a, name: a.name.trim() }));
   // Point at the first athlete that changed, so "See it" opens the page they are on.
   const firstChanged = state.athletes.find((a) => !same(a, before.get(a.id)));
   const button = $('#ath-save');
@@ -754,6 +806,7 @@ function applyAthletes(res) {
   state.athletes = clone(res.athletes);
   state.athletesSaved = clone(res.athletes);
   state.athletesRev = res.rev;
+  state.version++; // new PR dates can change the New PRs screens straight away
 }
 
 async function loadLatestAthletes() {
@@ -785,7 +838,8 @@ function newPrs(before, saved) {
 
 // Why a saved change won't reach the wall, or null when it will.
 function whiteboardWarning(athlete) {
-  if (!state.slides.some((s) => s.type === 'whiteboard' && s.enabled)) return 'The PR whiteboard is off in the Rotation tab, so the wall is not showing it.';
+  const onPrs = athlete && prScreenIndex(athlete.id) >= 0;
+  if (!onPrs && !state.slides.some((s) => s.type === 'whiteboard' && s.enabled)) return 'The PR whiteboard is off in the Rotation tab, so the wall is not showing it.';
   if (athlete && athlete.visible === false) return `${athlete.name} is hidden from the wall (the "On the wall" box is unticked).`;
   return null;
 }
@@ -794,12 +848,21 @@ function updateDirtyButtonsOnly() {
   $('#ath-save').disabled = !athletesDirty();
 }
 
-// Opens the Wall tab held on the whiteboard page that has this athlete.
+// Where this athlete has a New PRs screen in the rotation, or -1.
+function prScreenIndex(id) {
+  return sequence().findIndex((item) => item.kind === 'prs' && item.id === id);
+}
+
+// Opens the Wall tab held on this athlete's New PRs screen, or else on the whiteboard page
+// that has them.
 function showAthleteOnPreview(id) {
   location.hash = '#wall';
-  const fit = currentFit();
-  const page = Math.max(0, fit.pages.findIndex((p) => p.some((a) => a.id === id)));
-  const i = sequence().findIndex((item) => item.kind === 'wb' && item.page === page);
+  let i = prScreenIndex(id);
+  if (i < 0) {
+    const fit = currentFit();
+    const page = Math.max(0, fit.pages.findIndex((p) => p.some((a) => a.id === id)));
+    i = sequence().findIndex((item) => item.kind === 'wb' && item.page === page);
+  }
   if (i >= 0) jumpTo(i);
 }
 
@@ -1037,15 +1100,19 @@ function mediaInfo(o) {
     parts.push(`animated, ${source.frames.length} frames, ${source.duration.toFixed(1)} s`);
   }
   const bright = state.settings.brightness ?? 50;
-  const amps = estimateSupplyAmps(cropView.pixels(), bright);
-  const capped = slideBrightness(peakOf(cropView.pixels()), bright);
-  let power = `power at ${bright}% brightness ≈ ${amps.a.toFixed(1)} A / ${amps.b.toFixed(1)} A per supply`;
-  if (capped < bright) power += ` (over the ${SUPPLY_BUDGET_A.toFixed(1)} A budget, so the wall would play this at ${capped}%)`;
+  const pw = powerSetting();
+  const amps = estimateSupplyAmps(cropView.pixels(), bright, pw);
+  const capped = slideBrightness(peakOf(cropView.pixels()), bright, pw);
+  let power = pw.supplies === 1
+    ? `power at ${bright}% brightness ≈ ${amps.a.toFixed(1)} A on the supply`
+    : `power at ${bright}% brightness ≈ ${amps.a.toFixed(1)} A / ${amps.b.toFixed(1)} A per supply`;
+  if (capped < bright) power += ` (over the ${supplyBudgetA(pw).toFixed(1)} A budget, so the wall would play this at ${capped}%)`;
   parts.push(power);
   $('#media-info').textContent = parts.join(' · ');
 }
 
-// The busier supply's current for one frame at 100% brightness: the upload's peak_a.
+// The busier half's current (panels 1-6 or 7-12) for one frame at 100% brightness: the
+// upload's peak_a. Always the two-supply split, so it means the same whatever the supplies.
 function peakOf(rgba) {
   const { a, b } = estimateSupplyAmps(rgba, 100);
   return Math.max(a, b);
@@ -1054,7 +1121,7 @@ function peakOf(rgba) {
 // What the wall does with a file's brightness, in words, or '' when it plays at the setting.
 function dimmingNote(peakA) {
   const bright = state.settings.brightness ?? 50;
-  const capped = slideBrightness(peakA, bright);
+  const capped = slideBrightness(peakA, bright, powerSetting());
   return capped < bright ? `plays at ${capped}% (its brightest frame would overload a supply at ${bright}%)` : '';
 }
 
@@ -1182,14 +1249,19 @@ function slideThumb(s, fit) {
   if (s.type === 'media') return el('img', { class: 'thumb', src: `/media/${encodeURIComponent(s.file)}`, alt: '' });
   if (s.type === 'instagram_story') return bufferCanvas(igStoryBuffer(0, 0.4), 'thumb');
   if (s.type === 'instagram_posts') return bufferCanvas(igPostsBuffer(), 'thumb');
+  if (s.type === 'new_prs') return bufferCanvas(prBuffer(0), 'thumb');
+  if (s.type === 'announcements') return bufferCanvas(annBuffer(0), 'thumb');
   return bufferCanvas(renderWhiteboardPage(fit, 0, wbOptions()), 'thumb');
 }
 
-const SLIDE_TITLES = { whiteboard: 'PR whiteboard', instagram_story: 'Instagram story', instagram_posts: 'Instagram posts' };
+const SLIDE_TITLES = { whiteboard: 'PR whiteboard', instagram_story: 'Instagram story', instagram_posts: 'Instagram posts', new_prs: 'New PRs', announcements: 'Announcements' };
+const SECONDS_UNIT = { whiteboard: 's per page', instagram_story: 's per story', new_prs: 's per athlete', announcements: 's per announcement' };
 
-// How many screens a slide expands to right now (whiteboard pages, current stories).
+// How many screens a slide expands to right now (whiteboard pages, current stories, athletes with new PRs).
 function screensFor(s, fit) {
   if (s.type === 'whiteboard') return fit.pageCount;
+  if (s.type === 'new_prs') return prScreens().length;
+  if (s.type === 'announcements') return annScreens().length;
   if (s.type === 'instagram_story') return igActive() ? state.instagram.stories.length : 0;
   if (s.type === 'instagram_posts') return igActive() && state.instagram.posts.length ? 1 : 0;
   return 1;
@@ -1215,6 +1287,10 @@ function renderRotation() {
               : 'No story in the last 24 h, so this is skipped for now';
           } else sub.textContent = n ? `${ig.posts.length} latest ${ig.posts.length === 1 ? 'post' : 'posts'}` : 'No posts yet, so this is skipped';
           if (ig.sample) sub.textContent += ' · sample content until Instagram is connected';
+        } else if (s.type === 'new_prs') {
+          sub.textContent = newPrsLine(s);
+        } else if (s.type === 'announcements') {
+          sub.textContent = annLine(s);
         } else if (isWb) {
           const f = currentFit();
           sub.textContent = validSeconds(s.duration_s)
@@ -1260,7 +1336,7 @@ function renderRotation() {
         ),
         slideThumb(s, fit),
         el('div', { class: 'info' }, el('div', { class: 'title' }, title), sub),
-        el('label', { class: 'secs-wrap secs' }, secs, isWb ? 's per page' : s.type === 'instagram_story' ? 's per story' : 's'),
+        el('label', { class: 'secs-wrap secs' }, secs, SECONDS_UNIT[s.type] ?? 's'),
         el(
           'label',
           { class: 'secs-wrap on', title: 'Include in the rotation' },
@@ -1283,6 +1359,32 @@ function renderRotation() {
   );
   updateRotationSummary();
   updateDirty();
+}
+
+// The New PRs row's sub-line: who it would show, or why it is skipped.
+function newPrsLine(s) {
+  const days = state.settings.pr_highlight_days ?? 0;
+  if (!days) return '"Show new PRs in green" is 0 days in Settings, so this is skipped';
+  if (!prToday()) return "The wall's clock isn't set, so this is skipped";
+  const when = days === 1 ? 'today' : `in the last ${days} days`;
+  const n = allRecentPrs().length;
+  if (!n) return `No PRs ${when}, so this is skipped`;
+  const shown = Math.min(n, MAX_PR_SCREENS);
+  let text = `${n} ${n === 1 ? 'athlete' : 'athletes'} with PRs ${when}`;
+  if (n > shown) text += ` · the newest ${shown} are shown`;
+  if (validSeconds(s.duration_s)) text += ` · ${duration(s.duration_s * shown)} per pass`;
+  return text;
+}
+
+// The Announcements row's sub-line: how many show today, or why it is skipped.
+function annLine(s) {
+  const n = state.announcements.filter((a) => announcementActive(a, annToday())).length;
+  if (!n) return 'None showing today, so this is skipped';
+  const shown = Math.min(n, MAX_ANNOUNCE_SCREENS);
+  let text = `${n} ${n === 1 ? 'announcement' : 'announcements'} showing today`;
+  if (n > shown) text += ` · the first ${shown} are shown`;
+  if (validSeconds(s.duration_s)) text += ` · ${duration(s.duration_s * shown)} per pass`;
+  return text;
 }
 
 function updateRotationSummary() {
@@ -1372,6 +1474,286 @@ async function loadLatestSlides() {
   renderMedia();
 }
 
+// ---------------------------------------------------------------- announcements
+
+// The date announcements are judged against: the wall's own, the phone's only until the
+// first status arrives, and null while the wall has no clock (dated ones then wait, as on
+// the wall).
+function annToday() {
+  if (state.status?.time_valid === false) return null;
+  return state.status?.local_date ?? isoDate(new Date());
+}
+
+// The announcements that get a screen in one pass.
+function annScreens() {
+  return announcementScreens(state.announcements, annToday());
+}
+
+function annBuffer(index) {
+  const list = annScreens();
+  return list[index]
+    ? renderAnnouncement({ text: list[index].text.trim(), index, count: list.length })
+    : new Uint8ClampedArray(256 * 96 * 4).fill(0);
+}
+
+const codePoints = (t) => [...t].length;
+const breaks = (t) => (t.match(/\n/g) ?? []).length;
+
+function shortDate(d) {
+  const [y, m, day] = d.split('-').map(Number);
+  const opts = { month: 'short', day: 'numeric' };
+  if (y !== new Date().getFullYear()) opts.year = 'numeric';
+  return new Date(y, m - 1, day).toLocaleDateString([], opts);
+}
+
+// What is wrong with one announcement, as the wall would refuse it; [] when it can be saved.
+function annProblems(a) {
+  const t = a.text.trim();
+  const out = [];
+  if (!t) out.push('Type the announcement');
+  else if (codePoints(t) > MAX_ANNOUNCE_CHARS) out.push(`${codePoints(t)} characters: the most is ${MAX_ANNOUNCE_CHARS}`);
+  if (breaks(t) > MAX_ANNOUNCE_BREAKS) out.push(`${breaks(t)} new lines: the most is ${MAX_ANNOUNCE_BREAKS}`);
+  if (a.start_date && a.end_date && a.end_date < a.start_date) out.push('The end date is before the start date');
+  return out;
+}
+
+// Whether it is on the wall today, in words.
+function annStatus(a) {
+  const today = annToday();
+  if (a.enabled === false) return { text: 'Off, so not shown', on: false };
+  if ((a.start_date || a.end_date) && !today) return { text: "Waiting: the wall's clock isn't set, so dated ones don't show", on: false };
+  if (a.start_date && today < a.start_date) return { text: `Starts ${shortDate(a.start_date)}`, on: false };
+  if (a.end_date && today > a.end_date) return { text: `Ended ${shortDate(a.end_date)}`, on: false };
+  if (!annScreens().includes(a)) return { text: `Showing today, but only the first ${MAX_ANNOUNCE_SCREENS} get a screen`, on: false };
+  return { text: a.end_date ? `Showing today, until ${shortDate(a.end_date)}` : 'Showing today', on: true };
+}
+
+// A readable name for a character the wall can't draw.
+function charName(ch) {
+  if (ch === '\t') return 'tab';
+  if (ch === '\u00a0') return 'non-breaking space';
+  const c = ch.codePointAt(0);
+  return c < 32 || (c >= 127 && c < 160) ? `U+${c.toString(16).toUpperCase().padStart(4, '0')}` : ch;
+}
+
+const annRows = new Map(); // id -> refresh(), for the cards on screen
+
+function annItem(a, i) {
+  const n = i + 1;
+  const last = state.announcements.length - 1;
+  const canvas = el('canvas', { class: 'led', role: 'img' });
+  const view = new LedView(canvas, 3);
+  const text = el('textarea', { class: 'ann-text', rows: 3, value: a.text, 'aria-label': `Announcement ${n}`, placeholder: 'Type the announcement' });
+  const count = el('span', { class: 'ann-count' });
+  const status = el('span', { class: 'ann-status' });
+  const warn = el('p', { class: 'ann-warn', hidden: true });
+  const cut = el('p', { class: 'ann-warn', hidden: true }, 'Too long to fit, so the end is cut off (see the picture). Shorten it or take out a new line.');
+  const problem = el('p', { class: 'ann-problem', hidden: true });
+  const date = (key, label) => el('input', {
+    type: 'date',
+    value: a[key] ?? '',
+    'aria-label': `${label} date, announcement ${n}`,
+    onchange: (e) => {
+      a[key] = e.target.value || null;
+      edited();
+    },
+  });
+  const start = date('start_date', 'Start');
+  const end = date('end_date', 'End');
+  const on = el('input', {
+    type: 'checkbox',
+    checked: a.enabled !== false,
+    'aria-label': `Show announcement ${n}`,
+    onchange: (e) => {
+      a.enabled = e.target.checked;
+      edited();
+    },
+  });
+  const li = el(
+    'li',
+    { class: 'ann', dataset: { id: a.id } },
+    canvas,
+    el(
+      'div',
+      { class: 'ann-fields' },
+      text,
+      el('div', { class: 'ann-meta' }, count, status),
+      warn,
+      cut,
+      problem,
+      el('div', { class: 'ann-dates' }, el('label', {}, 'Start (optional)', start), el('label', {}, 'End (optional)', end)),
+      el(
+        'div',
+        { class: 'ann-foot' },
+        el('label', { class: 'inline' }, on, 'On'),
+        el('span', { class: 'spacer' }),
+        el('button', { type: 'button', class: 'icon', title: 'Move up', 'aria-label': `Move announcement ${n} up`, disabled: i === 0, onclick: () => moveAnnouncement(i, -1) }, '▲'),
+        el('button', { type: 'button', class: 'icon', title: 'Move down', 'aria-label': `Move announcement ${n} down`, disabled: i === last, onclick: () => moveAnnouncement(i, 1) }, '▼'),
+        el('button', { type: 'button', class: 'icon', title: 'Delete', 'aria-label': `Delete announcement ${n}`, onclick: () => deleteAnnouncement(i) }, '✕'),
+      ),
+    ),
+  );
+
+  const refresh = () => {
+    const t = a.text.trim();
+    const shown = annScreens();
+    const at = shown.indexOf(a);
+    // Exactly what the wall draws: its place among today's screens, or alone when it isn't showing.
+    const index = at >= 0 ? at : 0;
+    const total = at >= 0 ? shown.length : 1;
+    view.showBuffer(renderAnnouncement({ text: t, index, count: total }));
+    canvas.setAttribute('aria-label', `Preview of announcement ${n} on the wall`);
+    const chars = codePoints(t);
+    const nl = breaks(t);
+    count.textContent = `${chars} / ${MAX_ANNOUNCE_CHARS}${nl ? ` · ${nl} of ${MAX_ANNOUNCE_BREAKS} new lines` : ''}`;
+    count.classList.toggle('bad', chars > MAX_ANNOUNCE_CHARS || nl > MAX_ANNOUNCE_BREAKS);
+    const st = annStatus(a);
+    status.textContent = st.text;
+    status.classList.toggle('on', st.on);
+    li.classList.toggle('off', !st.on);
+    const missing = unshownChars(t);
+    warn.hidden = missing.length === 0;
+    if (missing.length) {
+      const fixable = plainText(a.text) !== a.text;
+      warn.replaceChildren(
+        el('span', {}, "Shows as ? on the wall: ", el('span', { class: 'ann-chars' }, missing.map(charName).join(' '))),
+        fixable && el('button', {
+          type: 'button',
+          class: 'small',
+          onclick: () => {
+            a.text = plainText(a.text);
+            text.value = a.text;
+            edited();
+            text.focus();
+          },
+        }, 'Replace with plain characters'),
+      );
+    }
+    cut.hidden = !t || !fitAnnouncement(t, total).cut;
+    const problems = annProblems(a);
+    problem.hidden = !problems.length;
+    problem.textContent = problems.join('. ');
+    const bad = (key) => problems.some((p) => p.startsWith(key));
+    text.classList.toggle('invalid', bad('Type') || /characters|new lines/.test(problems.join()));
+    text.setAttribute('aria-invalid', String(text.classList.contains('invalid')));
+    end.classList.toggle('invalid', bad('The end date'));
+  };
+  // Dots, positions and the 20-screen cap depend on every card, so the others follow
+  // shortly after; this card updates on every key.
+  const edited = () => {
+    changed();
+    refresh();
+    refreshOtherAnnouncements(a.id);
+  };
+  text.addEventListener('input', () => {
+    a.text = text.value;
+    edited();
+  });
+  annRows.set(a.id, refresh);
+  return li;
+}
+
+const refreshOtherAnnouncements = debounce((except) => {
+  for (const [id, refresh] of annRows) if (id !== except) refresh();
+  updateAnnouncementSummary();
+}, 150);
+
+function renderAnnouncements() {
+  annRows.clear();
+  const list = state.announcements;
+  $('#ann-list').replaceChildren(...list.map(annItem));
+  for (const refresh of annRows.values()) refresh();
+  $('#ann-empty').hidden = list.length > 0;
+  $('#ann-add').disabled = list.length >= MAX_ANNOUNCEMENTS;
+  $('#ann-add').title = list.length >= MAX_ANNOUNCEMENTS ? `The wall keeps up to ${MAX_ANNOUNCEMENTS}. Delete one first.` : '';
+  updateAnnouncementSummary();
+  updateDirty();
+}
+
+function updateAnnouncementSummary() {
+  const showing = state.announcements.filter((a) => announcementActive(a, annToday())).length;
+  $('#ann-summary').textContent = `${showing} showing today · ${state.announcements.length} in the list`;
+  const inRotation = state.slides.some((s) => s.type === 'announcements' && s.enabled);
+  const note = $('#ann-rot-note');
+  note.hidden = inRotation || state.announcements.length === 0;
+  if (!note.hidden) {
+    note.replaceChildren("The Announcements screen isn't switched on in the rotation, so the wall shows none of these. Add it on the ", el('a', { href: '#rotation' }, 'Rotation tab'), '.');
+  }
+}
+
+function addAnnouncement() {
+  if (state.announcements.length >= MAX_ANNOUNCEMENTS) return;
+  const a = { id: newId('n'), text: '', enabled: true, start_date: null, end_date: null };
+  state.announcements.push(a);
+  changed();
+  renderAnnouncements();
+  const li = $(`#ann-list li[data-id="${a.id}"]`);
+  li.scrollIntoView({ block: 'center' });
+  li.querySelector('textarea').focus();
+}
+
+function moveAnnouncement(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= state.announcements.length) return;
+  [state.announcements[i], state.announcements[j]] = [state.announcements[j], state.announcements[i]];
+  changed();
+  renderAnnouncements();
+  $(`#ann-list li[data-id="${state.announcements[j].id}"] button[title="${delta < 0 ? 'Move up' : 'Move down'}"]`)?.focus();
+}
+
+function deleteAnnouncement(i) {
+  const t = state.announcements[i].text.trim();
+  if (t && !confirm(`Delete "${t.length > 40 ? `${t.slice(0, 40)}...` : t}"?`)) return;
+  state.announcements.splice(i, 1);
+  changed();
+  renderAnnouncements();
+}
+
+async function saveAnnouncements() {
+  const errors = state.announcements.flatMap((a, i) => annProblems(a).map((p) => `Announcement ${i + 1}: ${p}`));
+  showErrors($('#ann-errors'), errors);
+  if (errors.length) {
+    const bad = $('#ann-list .invalid');
+    bad?.scrollIntoView({ block: 'center' });
+    bad?.focus();
+    barError('ann', `fix the ${errors.length === 1 ? 'announcement' : `${errors.length} problems`} outlined in red`);
+    return toast('Fix what is outlined in red, then save.', true);
+  }
+  const button = $('#ann-save');
+  button.disabled = true;
+  try {
+    const res = await request('PUT', '/api/announcements', { json: { rev: state.announcementsRev, announcements: state.announcements } });
+    applyAnnouncements(res);
+    const inRotation = state.slides.some((s) => s.type === 'announcements' && s.enabled);
+    savedNote.ann = [`Saved at ${savedAt()}.${inRotation ? ' The wall shows the change the next time announcements come round.' : ''}`];
+    $('#ann-state').dataset.mode = '';
+    renderAnnouncements();
+    toast(inRotation ? 'Announcements saved.' : 'Saved, but the Announcements screen is not on in the rotation.', !inRotation);
+  } catch (e) {
+    if (e.code === 'stale') staleBar('ann', 'announcements', loadLatestAnnouncements);
+    else {
+      barError('ann', e.message);
+      toast(e.message, true);
+    }
+    button.disabled = !announcementsDirty();
+  }
+}
+
+function applyAnnouncements(res) {
+  state.announcements = clone(res.announcements);
+  state.announcementsSaved = clone(res.announcements);
+  state.announcementsRev = res.rev;
+  state.version++;
+}
+
+async function loadLatestAnnouncements() {
+  applyAnnouncements(await request('GET', '/api/announcements'));
+  showErrors($('#ann-errors'), []);
+  savedNote.ann = [`Loaded the latest at ${savedAt()}.`];
+  $('#ann-state').dataset.mode = '';
+  renderAnnouncements();
+}
+
 // ---------------------------------------------------------------- settings
 
 function renderSettings() {
@@ -1382,6 +1764,11 @@ function renderSettings() {
   $('#set-sort').value = s.sort ?? 'board';
   $('#set-pr-days').value = s.pr_highlight_days ?? 7;
   $('#set-tz').value = s.timezone ?? 'America/Los_Angeles';
+  const pw = powerSetting();
+  $('#set-supplies').value = String(pw.supplies);
+  $('#set-rated').value = pw.rated_a;
+  $('#set-budget').value = pw.budget_pct;
+  $('.power-set').hidden = !s.power; // a wall without the setting: the estimate assumes today's two
   $('#pin-state').textContent = s.pin_set
     ? 'A PIN is set. This browser remembers it until you close the tab. To change it, type a new one; the wall asks for the current PIN first.'
     : 'No PIN is set yet.';
@@ -1389,15 +1776,25 @@ function renderSettings() {
   updateDirty();
 }
 
+// The supplies being edited on the Settings tab (as brightness is), else today's two.
+function powerSetting() {
+  return state.settings.power ?? DEFAULT_POWER;
+}
+
 function renderPowerNote() {
   const b = state.settings.brightness ?? 50;
-  const fullWhite = 6 * PANEL_FULL_WHITE_A * (b / 100);
+  const pw = powerSetting();
+  const fullWhite = (12 / pw.supplies) * PANEL_FULL_WHITE_A * (b / 100);
   const fit = currentFit();
-  const wb = estimateSupplyAmps(renderWhiteboardPage(fit, 0, wbOptions()), b);
-  const cap = slideBrightness(6 * PANEL_FULL_WHITE_A, 100);
-  $('#set-power').textContent =
-    `Estimated load per supply at ${b}%: PR whiteboard about ${Math.max(wb.a, wb.b).toFixed(1)} A, an all-white image about ${fullWhite.toFixed(1)} A. ` +
-    `Each supply is rated 18 A. The wall dims a whole image or video to keep its brightest frame under ${SUPPLY_BUDGET_A.toFixed(1)} A, so all-white images top out around ${cap}%.`;
+  const wb = estimateSupplyAmps(renderWhiteboardPage(fit, 0, wbOptions()), b, pw);
+  const cap = slideBrightness(6 * PANEL_FULL_WHITE_A, 100, pw); // all-white: 6 panels on the busier half
+  const budget = supplyBudgetA(pw).toFixed(1);
+  const tops = cap >= 100 ? 'so all-white images can play at full brightness.' : `so all-white images top out around ${cap}%.`;
+  $('#set-power').textContent = pw.supplies === 1
+    ? `Estimated load on the supply at ${b}%: PR whiteboard about ${wb.a.toFixed(1)} A, an all-white image about ${fullWhite.toFixed(1)} A. ` +
+      `The supply is rated ${pw.rated_a} A. The wall dims a whole image or video to keep its brightest frame under ${budget} A, ${tops}`
+    : `Estimated load per supply at ${b}%: PR whiteboard about ${Math.max(wb.a, wb.b).toFixed(1)} A, an all-white image about ${fullWhite.toFixed(1)} A. ` +
+      `Each supply is rated ${pw.rated_a} A. The wall dims a whole image or video to keep its brightest frame under ${budget} A, ${tops}`;
 }
 
 function renderInstagram() {
@@ -1539,14 +1936,46 @@ function bindSettings() {
     s().timezone = e.target.value;
     updateDirty();
   });
+  // Power supplies: the estimate above follows every valid edit; a bad box blocks Save.
+  const power = () => (s().power = { ...powerSetting() });
+  $('#set-supplies').addEventListener('change', (e) => {
+    power().supplies = Number(e.target.value);
+    renderPowerNote();
+    updateDirty();
+  });
+  $('#set-rated').addEventListener('input', (e) => {
+    const v = Number(e.target.value);
+    const ok = e.target.value.trim() !== '' && Number.isFinite(v) && v >= 5 && v <= 100;
+    e.target.classList.toggle('invalid', !ok);
+    e.target.setAttribute('aria-invalid', String(!ok));
+    if (ok) power().rated_a = v;
+    renderPowerNote();
+    updateDirty();
+  });
+  $('#set-budget').addEventListener('input', (e) => {
+    const v = Number(e.target.value);
+    const ok = e.target.value.trim() !== '' && Number.isInteger(v) && v >= 50 && v <= 95;
+    e.target.classList.toggle('invalid', !ok);
+    e.target.setAttribute('aria-invalid', String(!ok));
+    if (ok) power().budget_pct = v;
+    renderPowerNote();
+    updateDirty();
+  });
+  bindSchedule();
   $('#set-save').addEventListener('click', async () => {
     if ($('#set-pr-days').classList.contains('invalid')) return toast('PR highlight must be 0 to 60 days.', true);
+    const badPower = document.querySelector('.power-set input.invalid');
+    if (badPower) {
+      badPower.focus();
+      return toast(badPower.id === 'set-rated' ? 'Amps each must be 5 to 100.' : 'Budget must be a whole number from 50 to 95.', true);
+    }
     try {
-      const { title, brightness, sort, pr_highlight_days, timezone } = state.settings;
-      const res = await request('PUT', '/api/settings', { json: { title, brightness, sort, pr_highlight_days, timezone } });
-      refreshStatus(true); // the wall's date may have moved with the time zone
-      state.settings = clone(res);
-      state.settingsSaved = clone(res);
+      const { title, brightness, sort, pr_highlight_days, timezone, power } = state.settings;
+      const json = { title, brightness, sort, pr_highlight_days, timezone };
+      if (power) json.power = power; // an older wall without the setting would ignore it anyway
+      const res = await request('PUT', '/api/settings', { json });
+      refreshStatus(true); // the wall's date, and the schedule, may have moved with the time zone
+      applySettingsResponse(res, false);
       savedNote.set = [`Saved at ${savedAt()}.`];
       $('#set-state').dataset.mode = '';
       renderSettings();
@@ -1560,6 +1989,7 @@ function bindSettings() {
   $('#set-revert').addEventListener('click', () => {
     state.settings = clone(state.settingsSaved);
     $('#set-pr-days').classList.remove('invalid');
+    for (const i of document.querySelectorAll('.power-set input')) i.classList.remove('invalid');
     renderSettings();
     changed();
   });
@@ -1585,6 +2015,258 @@ function pinProblem(pin, again) {
   if (!/^\d{6,12}$/.test(pin)) return 'The PIN must be 6 to 12 digits.';
   if (pin !== again) return "The two PINs don't match. Type them again.";
   return null;
+}
+
+// ---------------------------------------------------------------- schedule
+
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_LONG = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+const DEFAULT_WINDOW = { start: '05:00', end: '21:00' };
+const DEFAULT_SCHEDULE = { enabled: false, days: Object.fromEntries(DAY_KEYS.map((d) => [d, [{ ...DEFAULT_WINDOW }]])) };
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const minutesOf = (t) => (t === '24:00' ? 1440 : Number(t.slice(0, 2)) * 60 + Number(t.slice(3)));
+// What each day had before it was switched off, so switching it back on restores it.
+const dayMemory = new Map();
+let scheduleServerError = null; // {day, error} from the last refused save
+
+// GET or PUT /api/settings: the schedule goes to its own card. A save of the other
+// settings leaves schedule edits alone, and the other way round.
+function applySettingsResponse(res, withSchedule) {
+  const { schedule, ...rest } = res;
+  state.settings = clone(rest);
+  state.settingsSaved = clone(rest);
+  if (withSchedule || !state.schedule) {
+    state.schedule = clone(schedule ?? DEFAULT_SCHEDULE);
+    state.scheduleSaved = clone(schedule ?? DEFAULT_SCHEDULE);
+  }
+}
+
+// The wall's rules and words (API.md 7.4), so a mistake shows next to the day before saving.
+function scheduleDayError(key, windows) {
+  const name = DAY_LONG[key];
+  if (windows.length > 2) return `${name}: give a list of 0 to 2 time ranges`;
+  for (const w of windows) {
+    if (!w.start || !w.end) return `${name}: fill in both times`;
+    if (!HHMM.test(w.start) || !(HHMM.test(w.end) || w.end === '24:00')) {
+      return `${name}: times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)`;
+    }
+    if (minutesOf(w.end) <= minutesOf(w.start)) return `${name}: a time range must end after it starts`;
+  }
+  const [a, b] = [...windows].sort((x, y) => minutesOf(x.start) - minutesOf(y.start));
+  if (b && minutesOf(a.end) > minutesOf(b.start)) return `${name}: the two time ranges overlap`;
+  return null;
+}
+
+function scheduleErrors() {
+  const out = {};
+  for (const d of DAY_KEYS) {
+    const e = scheduleDayError(d, state.schedule.days[d]);
+    if (e) out[d] = e;
+  }
+  if (scheduleServerError?.day && !out[scheduleServerError.day]) out[scheduleServerError.day] = scheduleServerError.error;
+  return out;
+}
+
+// Inline errors under each day, without rebuilding the rows (so typing keeps its focus).
+function showScheduleErrors() {
+  const errors = scheduleErrors();
+  for (const d of DAY_KEYS) {
+    const row = $(`#sch-day-${d}`);
+    const msg = row.querySelector('.day-error');
+    msg.hidden = !errors[d];
+    msg.textContent = errors[d] ?? '';
+    for (const i of row.querySelectorAll('input[type="time"]')) {
+      i.classList.toggle('invalid', Boolean(errors[d]));
+      i.setAttribute('aria-invalid', String(Boolean(errors[d])));
+    }
+  }
+  return errors;
+}
+
+function scheduleSummary() {
+  const sch = state.schedule;
+  if (!sch.enabled) return 'Not in use: the wall stays on';
+  const on = DAY_KEYS.filter((d) => sch.days[d].length).length;
+  return on === 0 ? 'Every day is off' : `On ${on} ${on === 1 ? 'day' : 'days'} a week`;
+}
+
+function scheduleEdited() {
+  scheduleServerError = null;
+  $('#sch-summary').textContent = scheduleSummary();
+  showScheduleErrors();
+  updateDirty();
+}
+
+// A time box shows "00:00" for an end of 24:00: time inputs stop at 23:59, and an end of
+// midnight is the only way an end can be earlier in the day than its start.
+function timeBox(key, i, which) {
+  const w = state.schedule.days[key][i];
+  const label = `${DAY_LONG[key]}, ${i ? 'second' : 'first'} time, ${which === 'start' ? 'on at' : 'off at'}`;
+  return el('input', {
+    type: 'time',
+    value: which === 'end' && w.end === '24:00' ? '00:00' : w[which],
+    'aria-label': label,
+    oninput: (e) => {
+      const v = e.target.value;
+      w[which] = which === 'end' && v === '00:00' ? '24:00' : v;
+      scheduleEdited();
+    },
+  });
+}
+
+function dayRow(key) {
+  const windows = state.schedule.days[key];
+  const on = el('input', {
+    type: 'checkbox',
+    checked: windows.length > 0,
+    onchange: (e) => {
+      if (e.target.checked) state.schedule.days[key] = dayMemory.get(key) ?? [{ ...DEFAULT_WINDOW }];
+      else {
+        dayMemory.set(key, state.schedule.days[key]);
+        state.schedule.days[key] = [];
+      }
+      renderSchedule();
+    },
+  });
+  const ranges = windows.map((_, i) =>
+    el('div', { class: 'range' },
+      timeBox(key, i, 'start'), el('span', { class: 'muted' }, 'to'), timeBox(key, i, 'end'),
+      el('button', {
+        type: 'button',
+        class: 'icon ghost',
+        title: 'Remove this time',
+        'aria-label': `Remove ${DAY_LONG[key]}'s ${i ? 'second' : 'first'} time`,
+        onclick: () => {
+          windows.splice(i, 1);
+          renderSchedule();
+        },
+      }, '✕')));
+  const add = windows.length === 1 && el('button', {
+    type: 'button',
+    class: 'small add',
+    'aria-label': `Add a second time on ${DAY_LONG[key]}`,
+    onclick: () => {
+      // Two hours an hour after the first range ends, or before it if that runs too late.
+      // The coach sets the real times; this only has to start out valid where it can.
+      const fmt = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      const [s0, e0] = [minutesOf(windows[0].start), minutesOf(windows[0].end)];
+      const start = e0 + 180 <= 1440 ? e0 + 60 : Math.max(0, s0 - 180);
+      windows.push({ start: fmt(start), end: fmt(Math.min(start + 120, 1440)) });
+      renderSchedule();
+    },
+  }, '+ Second time');
+  return el('div', { class: 'sched-day', id: `sch-day-${key}` },
+    el('label', { class: 'day-on' }, on, DAY_LONG[key].slice(0, 3)),
+    el('div', { class: 'ranges' }, windows.length ? ranges : el('span', { class: 'muted off-all-day' }, 'Off all day')),
+    add || null,
+    el('p', { class: 'day-error', role: 'alert', hidden: true }));
+}
+
+function renderSchedule() {
+  $('#sch-enabled').checked = state.schedule.enabled;
+  $('#sch-days').classList.toggle('dimmed', !state.schedule.enabled);
+  $('#sch-days').replaceChildren(...DAY_KEYS.map(dayRow));
+  $('#sch-summary').textContent = scheduleSummary();
+  showScheduleErrors();
+  updateDirty();
+}
+
+function copyMonday(to) {
+  for (const d of to) state.schedule.days[d] = clone(state.schedule.days.mon);
+  renderSchedule();
+}
+
+async function saveSchedule() {
+  const errors = showScheduleErrors();
+  const first = DAY_KEYS.find((d) => errors[d]);
+  if (first) {
+    barError('sch', errors[first]);
+    ($(`#sch-day-${first} input.invalid`) ?? $(`#sch-day-${first} input`))?.focus();
+    return;
+  }
+  try {
+    const res = await request('PUT', '/api/settings', { json: { schedule: state.schedule } });
+    state.schedule = clone(res.schedule);
+    state.scheduleSaved = clone(res.schedule);
+    dayMemory.clear();
+    savedNote.sch = [`Saved at ${savedAt()}.`];
+    $('#sch-state').dataset.mode = '';
+    renderSchedule();
+    refreshStatus(true);
+    toast('Schedule saved. Any "turn on now" or "turn off now" is cleared.');
+  } catch (e) {
+    if (e.data?.day) {
+      scheduleServerError = { day: e.data.day, error: e.message };
+      showScheduleErrors();
+    }
+    barError('sch', e.message);
+    toast(e.message, true);
+  }
+}
+
+function bindSchedule() {
+  $('#sch-enabled').addEventListener('change', (e) => {
+    state.schedule.enabled = e.target.checked;
+    renderSchedule();
+  });
+  $('#sch-copy-weekdays').addEventListener('click', () => copyMonday(['tue', 'wed', 'thu', 'fri']));
+  $('#sch-copy-all').addEventListener('click', () => copyMonday(DAY_KEYS.slice(1)));
+  $('#sch-save').addEventListener('click', saveSchedule);
+  $('#sch-revert').addEventListener('click', () => {
+    state.schedule = clone(state.scheduleSaved);
+    dayMemory.clear();
+    scheduleServerError = null;
+    renderSchedule();
+  });
+}
+
+// "9:00 pm", or "Tue 5:00 am" when it isn't today on the wall. `iso` is the wall's own
+// local time ("2026-11-06T21:00:00-08:00"), read as written: the phone may be elsewhere.
+function wallTimeText(iso, today) {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return iso;
+  const h = Number(m[4]);
+  const time = `${h % 12 || 12}:${m[5]} ${h < 12 ? 'am' : 'pm'}`;
+  if (`${m[1]}-${m[2]}-${m[3]}` === today) return time;
+  const weekday = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+  return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][weekday]} ${time}`;
+}
+
+function scheduleText(s) {
+  const until = s.next_change ? ` until ${wallTimeText(s.next_change, s.local_date)}` : '';
+  switch (s.schedule_state) {
+    case 'on':
+      return until ? `On${until}` : 'On (the schedule keeps it on)';
+    case 'off':
+      return until ? `Off${until} (schedule)` : 'Off (the schedule has no on times)';
+    case 'override_on':
+      return `On${until} (turned on by hand)`;
+    case 'override_off':
+      return until ? `Off${until} (turned off by hand)` : 'Off (turned off by hand, until you turn it on)';
+    case 'no_clock':
+      return "On. The wall's clock isn't set yet, so the schedule waits.";
+    default:
+      return 'On (no schedule set)';
+  }
+}
+
+// The real wall's on/off state on the Wall tab. A wall without the schedule shows nothing.
+function renderWallPower(s) {
+  const known = typeof s?.schedule_state === 'string';
+  const line = $('#sched-line');
+  line.hidden = !known;
+  for (const b of document.querySelectorAll('[data-control="wake"], [data-control="sleep"]')) b.hidden = !known;
+  const off = $('#pv-wall-off');
+  if (!known) {
+    off.hidden = true;
+    return;
+  }
+  line.textContent = scheduleText(s);
+  line.classList.toggle('off', s.display_on === false);
+  $('[data-control="wake"]').disabled = s.display_on === true;
+  $('[data-control="sleep"]').disabled = s.display_on === false;
+  off.hidden = s.display_on !== false;
+  off.textContent = `The real wall is off right now (${s.schedule_state === 'override_off' ? 'turned off by hand' : 'schedule'}). This preview keeps playing.`;
 }
 
 // ---------------------------------------------------------------- first run
@@ -1647,6 +2329,12 @@ function sequence() {
         for (let i = 0; i < n; i++) seq.push({ kind: 'story', index: i, seconds: s.duration_s, label: `Instagram story ${i + 1} of ${n}` });
       } else if (s.type === 'instagram_posts') {
         if (igActive() && state.instagram.posts.length) seq.push({ kind: 'posts', seconds: s.duration_s, label: 'Instagram posts' });
+      } else if (s.type === 'new_prs') {
+        const prs = prScreens();
+        prs.forEach((e, i) => seq.push({ kind: 'prs', index: i, id: e.athlete.id, seconds: s.duration_s, label: `New PR: ${e.athlete.name}, ${i + 1} of ${prs.length}` }));
+      } else if (s.type === 'announcements') {
+        const anns = annScreens();
+        anns.forEach((a, i) => seq.push({ kind: 'ann', index: i, id: a.id, seconds: s.duration_s, label: `Announcement ${i + 1} of ${anns.length}` }));
       } else seq.push({ kind: 'media', file: s.file, seconds: s.duration_s, label: s.file });
     }
     preview.seq = seq;
@@ -1670,6 +2358,10 @@ const renderStrip = debounce(() => {
         thumb = bufferCanvas(igStoryBuffer(item.index, 0.5));
       } else if (item.kind === 'posts') {
         thumb = bufferCanvas(igPostsBuffer());
+      } else if (item.kind === 'prs') {
+        thumb = bufferCanvas(prBuffer(item.index));
+      } else if (item.kind === 'ann') {
+        thumb = bufferCanvas(annBuffer(item.index));
       } else {
         thumb = el('img', { src: `/media/${encodeURIComponent(item.file)}`, alt: '' });
       }
@@ -1752,6 +2444,10 @@ function previewTick(now) {
     if (preview.bufKey !== key) previewView.showBuffer(renderWhiteboardPage(currentFit(), item.page, wbOptions()));
   } else if (item.kind === 'posts') {
     if (preview.bufKey !== key) previewView.showBuffer(igPostsBuffer());
+  } else if (item.kind === 'prs') {
+    if (preview.bufKey !== key) previewView.showBuffer(prBuffer(item.index));
+  } else if (item.kind === 'ann') {
+    if (preview.bufKey !== key) previewView.showBuffer(annBuffer(item.index));
   } else if (item.kind === 'story') {
     // The progress bar moves, so redraw a few times a second.
     if (preview.bufKey !== key || now - preview.lastDraw > 100) {
@@ -1805,15 +2501,18 @@ async function refreshStatus(force = false) {
   try {
     const s = await request('GET', '/api/status');
     const wasDate = state.status?.local_date;
+    const wasValid = state.status?.time_valid;
     state.status = s;
-    if (s.local_date !== wasDate) {
-      // The wall's day changed (midnight there, or a new time zone): PR highlights move with it.
+    if (s.local_date !== wasDate || s.time_valid !== wasValid) {
+      // The wall's day changed (midnight there, or a new time zone): PR highlights move with
+      // it, and so does who gets a New PRs screen.
+      state.version++;
       scheduleFit();
       preview.bufKey = '';
     }
     const dd = (v, cls) => el('dd', cls ? { class: cls } : {}, v);
     const rows = [
-      ['Wall', dd(s.paused ? 'Paused' : 'Playing')],
+      ['Wall', dd(`${s.paused ? 'Paused' : 'Playing'}${s.display_on === false ? ' (screen off)' : ''}`)],
       nowPlayingText(s.now_playing) && ['Showing', dd(nowPlayingText(s.now_playing))],
       ['Storage', dd(`${kb(s.storage.used_bytes)} of ${kb(s.storage.usable_bytes ?? s.storage.total_bytes)} used`)],
       ['Wi-Fi', dd(`${s.wifi.ssid} (${s.wifi.rssi} dBm)`)],
@@ -1823,6 +2522,7 @@ async function refreshStatus(force = false) {
     ].filter(Boolean);
     $('#status').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), v]));
     renderDiagnostics(s);
+    renderWallPower(s);
     $('[data-control="pause"]').disabled = Boolean(s.paused);
     $('[data-control="resume"]').disabled = !s.paused;
   } catch (e) {
@@ -1950,6 +2650,16 @@ function bind() {
     changed();
     renderRotation();
   });
+  $('#rot-add-prs').addEventListener('click', () => {
+    state.slides.push({ id: newId('s'), type: 'new_prs', duration_s: DEFAULT_PRS_SECONDS, enabled: true });
+    changed();
+    renderRotation();
+  });
+  $('#rot-add-ann').addEventListener('click', () => {
+    state.slides.push({ id: newId('s'), type: 'announcements', duration_s: DEFAULT_ANN_SECONDS, enabled: true });
+    changed();
+    renderRotation();
+  });
   $('#rot-add-media').addEventListener('change', (e) => {
     if (e.target.value) addMediaSlide(e.target.value, false);
     e.target.value = '';
@@ -1962,19 +2672,29 @@ function bind() {
     renderMedia();
   });
 
+  $('#ann-add').addEventListener('click', addAnnouncement);
+  $('#ann-save').addEventListener('click', saveAnnouncements);
+  $('#ann-revert').addEventListener('click', () => {
+    state.announcements = clone(state.announcementsSaved);
+    showErrors($('#ann-errors'), []);
+    changed();
+    renderAnnouncements();
+  });
+
   bindSettings();
 
   window.addEventListener('beforeunload', (e) => {
-    if (athletesDirty() || rotationDirty() || settingsDirty()) e.preventDefault();
+    if (athletesDirty() || rotationDirty() || announcementsDirty() || settingsDirty() || scheduleDirty()) e.preventDefault();
   });
   setInterval(refreshStatus, 10000);
   $('#diag').addEventListener('toggle', () => $('#diag').open && refreshStatus(true));
 }
 
 async function load() {
-  const [a, p, s, m, ig, st] = await Promise.all([
+  const [a, p, n, s, m, ig, st] = await Promise.all([
     request('GET', '/api/athletes'),
     request('GET', '/api/playlist'),
+    request('GET', '/api/announcements'),
     request('GET', '/api/settings'),
     request('GET', '/api/media'),
     request('GET', '/api/instagram'),
@@ -1984,8 +2704,8 @@ async function load() {
   state.instagram = ig;
   applyAthletes(a);
   applySlides(p);
-  state.settings = s;
-  state.settingsSaved = clone(s);
+  applyAnnouncements(n);
+  applySettingsResponse(s, true);
   state.media = m;
 }
 
@@ -2016,8 +2736,11 @@ async function start() {
   if (!state.settings.pin_set) await showSetup();
   renderDiagnostics(state.status);
   renderAthletes();
+  renderAnnouncements();
   renderMedia();
   renderSettings();
+  renderSchedule();
+  renderWallPower(state.status);
   renderInstagram();
   loadTiles();
   renderRotation();

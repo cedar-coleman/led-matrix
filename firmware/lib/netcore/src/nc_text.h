@@ -30,6 +30,9 @@ bool isPin(const std::string& s);         // ^[0-9]{6,12}$
 bool isAccountId(const std::string& s);   // ^[0-9]{0,32}$
 bool isAccessToken(const std::string& s); // ^[A-Za-z0-9_\-|.]{0,1024}$
 bool isGeneration(const std::string& s);  // ^[0-9]{1,9}$
+// A real calendar day written YYYY-MM-DD, year 0001 to 9999 (Python's date.fromisoformat
+// after the pattern ^[0-9]{4}-[0-9]{2}-[0-9]{2}$).
+bool isCalendarDate(const std::string& s);
 
 // /ig/ paths after percent-decoding: ^(\d{1,9})/((story|post)-\d{1,2}\.bmp)$.
 bool parseTilePath(const std::string& rel, std::string* gen, std::string* file);

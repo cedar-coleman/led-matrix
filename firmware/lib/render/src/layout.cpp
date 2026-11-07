@@ -289,12 +289,16 @@ void renderWhiteboardPage(Surface& s, const Fit& fit, int pageIndex, const White
   }
 }
 
+bool blankName(const std::string& name) {
+  const JsString n = fromUtf8(name);
+  return std::all_of(n.begin(), n.end(), [](char16_t u) { return isJsSpace(u); });
+}
+
 std::vector<const Athlete*> whiteboardAthletes(const std::vector<Athlete>& athletes, SortMode mode) {
   std::vector<const Athlete*> named;
   named.reserve(athletes.size());
   for (const Athlete& a : athletes) {
-    const JsString n = fromUtf8(a.name);
-    if (std::any_of(n.begin(), n.end(), [](char16_t u) { return !isJsSpace(u); })) named.push_back(&a);
+    if (!blankName(a.name)) named.push_back(&a);
   }
   return sortAthletes(named, mode);
 }

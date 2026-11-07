@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -80,6 +81,46 @@ def put_json(base, path, body, pin=None):
         return r.status, json.loads(r.read())
 
 
+def seed_prs(base, store):
+    """PRs over the last three days, saved with the wall's clock moved back, so the New PRs
+    screens show "today", "yesterday" and "2 days ago", a 0.5 kg increase, more than three
+    lifts and a lift filled in for the first time (no "+")."""
+    import urllib.request
+    real = store.utcnow
+    days = [(2, {"jedthefred": {"back_squat": 186.5}}),
+            (1, {"the_peoples_master": {"snatch": 156, "clean_jerk": 178, "total": 334, "front_squat": 212.5}}),
+            (0, {"Brad B.": {"snatch": 97.5}, "alli_garver": {"back_squat": 120}})]
+    try:
+        for ago, edits in days:
+            store.utcnow = lambda ago=ago: real() - timedelta(days=ago)
+            with urllib.request.urlopen(base + "/api/athletes") as r:
+                doc = json.loads(r.read())
+            for a in doc["athletes"]:
+                a.update(edits.get(a["name"], {}))
+            assert put_json(base, "/api/athletes", doc, PIN)[0] == 200
+    finally:
+        store.utcnow = real
+
+
+def seed_announcements(base, store):
+    """Five announcements: two undated, one dated around today, one that has ended and one
+    switched off, so three show and the Notices tab has every status to draw."""
+    import urllib.request
+    today = date.fromisoformat(store.local_date())
+    with urllib.request.urlopen(base + "/api/announcements") as r:
+        rev = json.loads(r.read())["rev"]
+    notes = [
+        {"id": "n1", "text": "Welcome to The Strength Tank"},
+        {"id": "n2", "text": "OPEN GYM\nSaturday 8 to 12"},
+        {"id": "n3", "text": "Bring a friend week! Every member can bring one guest to any class from Monday to "
+                             "Saturday. Sign them in at the desk first.",
+         "start_date": (today - timedelta(days=2)).isoformat(), "end_date": (today + timedelta(days=5)).isoformat()},
+        {"id": "n4", "text": "Closed for Halloween", "start_date": "2025-10-31", "end_date": "2025-10-31"},
+        {"id": "n5", "text": "Caf\u00e9 \u201cPR\u201d day", "enabled": False},
+    ]
+    assert put_json(base, "/api/announcements", {"rev": rev, "announcements": notes}, PIN)[0] == 200
+
+
 def start_server(handler_base=None):
     data = tempfile.mkdtemp(prefix="wall-e2e-data-")
     store = mock_server.Store(Path(data))
@@ -113,6 +154,8 @@ class BrowserTest(unittest.TestCase):
         cls.data, cls.handler, cls.server, cls.base = start_server()
         status, _ = put_json(cls.base, "/api/settings", {"new_pin": PIN})  # the first-run step
         assert status == 200
+        seed_prs(cls.base, cls.handler.store)
+        seed_announcements(cls.base, cls.handler.store)
 
     @classmethod
     def tearDownClass(cls):
@@ -147,15 +190,21 @@ class BrowserTest(unittest.TestCase):
         # Chrome won't make a window narrower than about 500 px, so phone width is a
         # 390 px iframe (tests/e2e/phone.html) inside a wider window.
         # A phone entry may name an act from phone.html that sets up a state (unsaved edits, a search).
-        # Read-only: no PIN in the page, so nothing here changes the wall (the stale act saves
-        # with the PIN and is last).
+        # Read-only apart from two acts: "asleep" turns the wall off by hand (the UI test starts
+        # with a schedule save, which clears that), and "stale" saves with the PIN and is last.
         for tab, size, phone in [("wall", "1280,1500", False), ("athletes", "1280,2400", False),
+                                 ("notices", "1280,2300", False), ("notices", "390,1700", True),
+                                 ("notices&act=ascii", "390,1700", True), ("wall&act=announce", "390,1700", True),
+                                 ("rotation&act=announce", "390,1700", True),
                                  ("media", "1280,1100", False), ("rotation", "1280,1000", False),
-                                 ("settings", "1280,1600", False), ("wall", "390,1700", True),
+                                 ("settings", "1280,2300", False), ("wall", "390,1700", True),
                                  ("athletes", "390,1700", True), ("rotation", "390,1700", True),
                                  ("media", "390,1700", True), ("settings", "390,1700", True),
                                  ("athletes&act=unsaved", "390,1700", True), ("athletes&act=find", "390,1700", True),
-                                 ("wall&act=diag", "390,1700", True), (f"athletes&act=stale&pin={PIN}", "390,1700", True)]:
+                                 ("wall&act=diag", "390,1700", True), ("wall&act=newprs", "390,1700", True),
+                                 ("rotation&act=newprs", "390,1700", True), ("settings&act=schedule", "390,1700", True),
+                                 ("wall&act=asleep", "390,1700", True),
+                                 (f"athletes&act=stale&pin={PIN}", "390,1700", True)]:
             name = tab.split("&pin=")[0].replace("&act=", "-")
             out = screenshot(self.base, name, tab, phone, size)
             self.assertTrue(out.exists() and out.stat().st_size > 10000, f"no screenshot for {tab}")

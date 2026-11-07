@@ -19,6 +19,10 @@ void push(const uint8_t* rgb);
 // 0..100 percent of the driver's full brightness.
 void setBrightnessPct(int pct);
 
+// Display off (schedule or sleep): brightness 0 and the DMA buffer cleared, so the panels
+// are black even if the output-enable timing leaks. The caller's canvas is untouched.
+void blank();
+
 float refreshHz();  // as computed by the library at begin()
 
 }  // namespace hub75

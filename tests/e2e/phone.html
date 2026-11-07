@@ -12,9 +12,14 @@ const PIN = '246813';
 // The frame shares this page's session storage, so the console starts with the PIN remembered.
 if (params.get('pin')) sessionStorage.setItem('wall_admin_pin', params.get('pin'));
 const f = document.getElementById('f');
-f.src = '/#' + tab;
-const put = (path, body, pin) =>
-  fetch(path, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': pin } });
+const put = (path, body, pin, method = 'PUT') =>
+  fetch(path, { method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': pin } });
+// Run before the console loads, so it opens on the state the screenshot is for.
+const before = {
+  // The real wall switched off by hand: the Wall tab says so and the preview carries on.
+  asleep: () => put('/api/control', { action: 'sleep' }, PIN, 'POST'),
+};
+Promise.resolve(before[act]?.()).finally(() => (f.src = '/#' + tab));
 const acts = {
   // Raise one lift and break another, so the save bar, the green "new PR" outline and
   // the red invalid box all show.
@@ -29,6 +34,49 @@ const acts = {
     const q = doc.getElementById('ath-filter');
     q.value = 'jess';
     q.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+  // The schedule card mid-edit: switched on, Sunday off, a second Saturday time, and
+  // Tuesday ending before it starts, so the inline error shows.
+  schedule(doc) {
+    const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
+    doc.getElementById('sch-enabled').click();
+    doc.querySelector('#sch-day-sun input[type="checkbox"]').click();
+    doc.querySelector('#sch-day-sat button.add').click();
+    const tue = doc.querySelectorAll('#sch-day-tue input[type="time"]');
+    tue[1].value = '04:30';
+    fire(tue[1], 'input');
+    doc.getElementById('sch-card').scrollIntoView();
+  },
+  // Wall tab: the preview held on the New PRs screen with several lifts. Rotation tab: the
+  // New PRs row scrolled into view.
+  newprs(doc) {
+    if (tab === 'rotation') {
+      const row = [...doc.querySelectorAll('#rot-list li')].find((li) => li.querySelector('.title')?.textContent === 'New PRs');
+      return row ? row.scrollIntoView() : setTimeout(() => acts.newprs(doc), 50);
+    }
+    const b = [...doc.querySelectorAll('#pv-strip button')].find((x) => /^New PR: the_peoples_master/.test(x.title));
+    if (!b) return setTimeout(() => acts.newprs(doc), 50);
+    b.click();
+  },
+  // Notices: the first announcement mid-edit with curly quotes, a dash and an emoji, so the
+  // "shows as ?" warning and its "Replace with plain characters" button show.
+  ascii(doc) {
+    const t = doc.querySelector('#ann-list textarea');
+    if (!t) return setTimeout(() => acts.ascii(doc), 50);
+    t.value = 'Don\u2019t miss \u201cFight Gone Bad\u201d on Friday \u2014 \ud83d\udcaa';
+    t.dispatchEvent(new Event('input', { bubbles: true }));
+    t.closest('li').scrollIntoView();
+  },
+  // Wall tab: the preview held on the second announcement (dots under the text). Rotation
+  // tab: the Announcements row scrolled into view.
+  announce(doc) {
+    if (tab === 'rotation') {
+      const row = [...doc.querySelectorAll('#rot-list li')].find((li) => li.querySelector('.title')?.textContent === 'Announcements');
+      return row ? row.scrollIntoView() : setTimeout(() => acts.announce(doc), 50);
+    }
+    const b = [...doc.querySelectorAll('#pv-strip button')].find((x) => x.title === 'Announcement 3 of 3');
+    if (!b) return setTimeout(() => acts.announce(doc), 50);
+    b.click();
   },
   diag(doc) {
     doc.getElementById('diag').open = true;

@@ -29,25 +29,49 @@ struct Athlete {
   bool has[kLiftCount] = {};           // false: blank on the board
   std::string pr_date[kLiftCount];      // "YYYY-MM-DD" or ""
   bool visible = true;
+  // pr_prev: the value the last PR replaced. false for null (the lift was blank before)
+  // and for no record; the New PRs screen shows no increase for either.
+  float prev_kg[kLiftCount] = {};
+  bool has_prev[kLiftCount] = {};
 };
 
-enum class SlideType : uint8_t { kWhiteboard, kMedia, kInstagramStory, kInstagramPosts };
+// New types go at the end: the numbering is shared by both halves.
+enum class SlideType : uint8_t { kWhiteboard, kMedia, kInstagramStory, kInstagramPosts, kNewPrs, kAnnouncements };
 
 struct Slide {
   std::string id;
   SlideType type = SlideType::kWhiteboard;
-  uint16_t duration_s = 8;  // 5..999; per page / per story where the slide expands
+  uint16_t duration_s = 8;  // 5..999; per page / story / athlete / announcement where the slide expands
   bool enabled = true;
   std::string file;         // media slides: file name in /media
 };
 
+// One coach's message (API.md 6a). Dates are "YYYY-MM-DD", "" for none; end_date is the
+// last day shown. Which ones show depends on the wall's date, so that is the renderer's job.
+struct Announcement {
+  std::string id;
+  std::string text;  // UTF-8, trimmed, '\n' for a line break
+  bool enabled = true;
+  std::string start_date;
+  std::string end_date;
+};
+
 enum class SortMode : uint8_t { kBoard, kTotal, kName };
+
+// settings.power (API.md 7.3). The default is today's wiring: two 18 A supplies, A on chain
+// panels 1-6 and B on 7-12, each loaded to 85% of its rating. One supply carries all 12.
+struct PowerSupplies {
+  uint8_t supplies = 2;     // 1 or 2
+  double rated_a = 18;      // 5..100 A each; a double so the budget matches web/power.js bit for bit
+  uint8_t budget_pct = 85;  // 50..95
+};
 
 struct WallSettings {
   std::string title = "THE STRENGTH TANK";
   uint8_t brightness = 50;          // 5..100
   SortMode sort = SortMode::kBoard;
   uint8_t pr_highlight_days = 7;    // 0 = off
+  PowerSupplies power;
 };
 
 struct MediaInfo {
@@ -80,6 +104,7 @@ struct Content {
   WallSettings settings;
   std::vector<MediaInfo> media;
   IgContent instagram;
+  std::vector<Announcement> announcements;  // list order, all of them (enabled or not)
 };
 using ContentPtr = std::shared_ptr<const Content>;
 
@@ -108,6 +133,13 @@ struct RenderStatus {
   uint32_t frames = 0;
 };
 RenderStatus render_status();  // thread safe
+
+// The display schedule (API.md 7.4) is worked out by the network half, which owns time.
+// Off: the panels go black at brightness 0 and the render task idles, decoding and
+// pushing nothing; published content and controls wait. On: the rotation carries on from
+// the screen and the time it had left. Setup and error messages still show while off.
+// Thread safe and idempotent; the wall starts on.
+void display_set_power(bool on);
 
 // Flash erase/write stalls the cache and PSRAM. The network half brackets large writes
 // (uploads, Instagram tiles) with these so the render task can hold the current frame.

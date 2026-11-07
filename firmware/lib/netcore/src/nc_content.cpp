@@ -17,8 +17,12 @@ wall::SlideType slideType(const char* t) {
   if (!strcmp(t, "media")) return wall::SlideType::kMedia;
   if (!strcmp(t, "instagram_story")) return wall::SlideType::kInstagramStory;
   if (!strcmp(t, "instagram_posts")) return wall::SlideType::kInstagramPosts;
+  if (!strcmp(t, "new_prs")) return wall::SlideType::kNewPrs;
+  if (!strcmp(t, "announcements")) return wall::SlideType::kAnnouncements;
   return wall::SlideType::kWhiteboard;
 }
+
+}  // namespace
 
 const char* slideTypeName(wall::SlideType t) {
   switch (t) {
@@ -28,10 +32,16 @@ const char* slideTypeName(wall::SlideType t) {
       return "instagram_story";
     case wall::SlideType::kInstagramPosts:
       return "instagram_posts";
+    case wall::SlideType::kNewPrs:
+      return "new_prs";
+    case wall::SlideType::kAnnouncements:
+      return "announcements";
     default:
       return "whiteboard";
   }
 }
+
+namespace {
 
 wall::IgKind igKind(const char* k) {
   if (!strcmp(k, "video")) return wall::IgKind::kVideo;
@@ -74,6 +84,9 @@ wall::Content buildContent(const ContentSources& src, uint32_t version) {
       w.has[k] = isJsonNumber(v);
       w.kg[k] = w.has[k] ? v.as<float>() : 0;
       w.pr_date[k] = str(a["pr_dates"][kLifts[k]]);
+      JsonVariantConst p = a["pr_prev"][kLifts[k]];
+      w.has_prev[k] = isJsonNumber(p);
+      w.prev_kg[k] = w.has_prev[k] ? p.as<float>() : 0;
     }
     c.athletes.push_back(std::move(w));
   }
@@ -89,6 +102,16 @@ wall::Content buildContent(const ContentSources& src, uint32_t version) {
     c.slides.push_back(std::move(w));
   }
 
+  for (JsonVariantConst a : src.announcements["announcements"].as<JsonArrayConst>()) {
+    wall::Announcement w;
+    w.id = str(a["id"]);
+    w.text = str(a["text"]);
+    w.enabled = !(a["enabled"].is<bool>() && !a["enabled"].as<bool>());
+    w.start_date = str(a["start_date"]);
+    w.end_date = str(a["end_date"]);
+    c.announcements.push_back(std::move(w));
+  }
+
   JsonObjectConst st = src.settings;
   c.settings.title = str(st["title"], "THE STRENGTH TANK");
   c.settings.brightness = static_cast<uint8_t>(isJsonInt(st["brightness"]) ? st["brightness"].as<int>() : 50);
@@ -98,6 +121,12 @@ wall::Content buildContent(const ContentSources& src, uint32_t version) {
                                             : wall::SortMode::kBoard;
   c.settings.pr_highlight_days =
       static_cast<uint8_t>(isJsonInt(st["pr_highlight_days"]) ? st["pr_highlight_days"].as<int>() : 7);
+  JsonDocument power;  // a stored value the API wouldn't accept keeps the default supplies
+  if (validatePower(st["power"], power.to<JsonObject>()).ok()) {
+    c.settings.power.supplies = power["supplies"].as<uint8_t>();
+    c.settings.power.rated_a = power["rated_a"].as<double>();
+    c.settings.power.budget_pct = power["budget_pct"].as<uint8_t>();
+  }
 
   for (const std::string& name : src.mediaFiles) {
     wall::MediaInfo m;
@@ -135,6 +164,11 @@ void athletesToJson(const std::vector<wall::Athlete>& athletes, JsonArray out) {
     for (int k = 0; k < wall::kLiftCount; k++) {
       if (!a.pr_date[k].empty()) dates[kLifts[k]] = a.pr_date[k];
     }
+    // Only known previous values come back: Content keeps no difference between null and absent.
+    JsonObject prev = o["pr_prev"].to<JsonObject>();
+    for (int k = 0; k < wall::kLiftCount; k++) {
+      if (a.has_prev[k]) prev[kLifts[k]] = a.prev_kg[k];
+    }
   }
 }
 
@@ -146,6 +180,22 @@ void slidesToJson(const std::vector<wall::Slide>& slides, JsonArray out) {
     o["duration_s"] = s.duration_s;
     o["enabled"] = s.enabled;
     if (s.type == wall::SlideType::kMedia) o["file"] = s.file;
+  }
+}
+
+void announcementsToJson(const std::vector<wall::Announcement>& list, JsonArray out) {
+  for (const wall::Announcement& a : list) {
+    JsonObject o = out.add<JsonObject>();
+    o["id"] = a.id;
+    o["text"] = a.text;
+    o["enabled"] = a.enabled;
+    for (const auto& kv : {std::make_pair("start_date", &a.start_date), std::make_pair("end_date", &a.end_date)}) {
+      if (kv.second->empty()) {
+        o[kv.first] = nullptr;
+      } else {
+        o[kv.first] = *kv.second;
+      }
+    }
   }
 }
 

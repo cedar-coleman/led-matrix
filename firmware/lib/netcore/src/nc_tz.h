@@ -26,7 +26,15 @@ int zoneIndex(const std::string& iana);  // -1 if not one of the eight
 // STDoffset[DST[offset][,Mm.w.d[/time],Mm.w.d[/time]]]. 0 for a string it can't parse.
 int32_t utcOffsetAt(const char* posix, int64_t unix);
 
+// The first instant after `unix` where the offset changes (a daylight-saving switch), or -1
+// for a zone without daylight saving or a string it can't parse.
+int64_t nextOffsetChange(const char* posix, int64_t unix);
+
 // "YYYY-MM-DD" in the zone at `unix`.
 std::string localDate(int zone, int64_t unix);
+
+// Local time with its offset, as Python's datetime.isoformat() writes it:
+// "2026-11-06T21:00:00-08:00" ("+00:00" for UTC).
+std::string localIso(int zone, int64_t unix);
 
 }  // namespace netcore

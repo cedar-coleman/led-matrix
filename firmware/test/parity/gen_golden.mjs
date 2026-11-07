@@ -4,8 +4,8 @@
 // records what they draw; the C++ port in lib/render must draw the same bytes.
 //
 // Run from firmware/:  node test/parity/gen_golden.mjs
-// Rerun whenever web/layout.js, web/igslides.js, web/power.js or web/font5x7.js change,
-// then `pio test -e native`.
+// Rerun whenever web/layout.js, web/igslides.js, web/prslides.js, web/announceslides.js, web/power.js
+// or web/font5x7.js change, then `pio test -e native`.
 //
 // Output: test/parity/fixtures/manifest.json (inputs and expected values) and one
 // run-length-encoded RGB frame per screen in fixtures/frames/. Run-length encoding keeps
@@ -25,6 +25,8 @@ const web = (f) => path.join(root, 'web', f);
 
 const layout = await import(web('layout.js'));
 const ig = await import(web('igslides.js'));
+const pr = await import(web('prslides.js'));
+const ann = await import(web('announceslides.js'));
 const power = await import(web('power.js'));
 const { FONT5X7 } = await import(web('font5x7.js'));
 
@@ -284,6 +286,81 @@ postsCase('user_16', [post('post0.565', 'image', 1150, ages[1])], { username: 'a
 postsCase('user_long', [post('post0.565', 'image', 1150, ages[1])], { username: 'abcdefghijklmnopqrstu' });
 postsCase('user_emoji', [post('post0.565', 'image', 1150, ages[1])], { username: 'gym💪tank' });
 
+// ------------------------------------------------------------------ new PRs
+
+const prs = [];
+const day = (s) => {
+  if (!s) return null; // the wall without a clock
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+// recentPrs on the inputs, then a frame per entry (index i of the capped count), plus any
+// `extra` renders with their own index and count for the dot row.
+function prCase(name, athletes, { days = 7, today = TODAY, extra = [] } = {}) {
+  const list = pr.recentPrs(athletes, days, day(today));
+  const count = Math.min(list.length, pr.MAX_PR_SCREENS);
+  const render = (entry, index, n, tag) =>
+    ({ entry, index, count: n, frame: writeFrame(`prs_${name}_${tag}`, pr.renderPrSlide({ entry: list[entry], index, count: n, today: day(today) })) });
+  const frames = list.slice(0, count).map((_, i) => render(i, i, count, i));
+  extra.forEach(([entry, index, n], k) => frames.push(render(entry, index, n, `x${k}`)));
+  prs.push({
+    name, athletes, days, today, frames,
+    list: list.map((e) => ({ id: e.athlete.id, newest: e.newest, lifts: e.lifts.map((l) => ({ lift: l.lift, date: l.date })) })),
+  });
+}
+
+const withPrev = (a, prev) => ({ ...a, pr_prev: prev });
+const lifted = (id, name, kg, dates, prev, extra = {}) => withPrev(athlete(id, name, kg, { pr_dates: dates, ...extra }), prev);
+
+prCase('single', [lifted('p0', 'Brad B.', [95.5, 130, 225, 180, 155], { snatch: TODAY }, { snatch: 93 })]);
+prCase('multiple', [lifted('p0', 'the_peoples_master', [153, 175, 322, 250.5, 210],
+  { snatch: '2026-11-05', clean_jerk: '2026-11-05', total: '2026-11-05' }, { snatch: 150, clean_jerk: 172, total: 318 })]);
+prCase('mixed_widths', [lifted('p0', 'jedthefred', [92, 114.5, 206, 182, 145],
+  { snatch: TODAY, clean_jerk: TODAY, back_squat: '2026-11-04' }, { snatch: 89, clean_jerk: 102, back_squat: 177.5 })]);
+prCase('two_lifts', [lifted('p0', 'Josh S.', [122, 151, 267, 180, 155], { total: TODAY, front_squat: TODAY }, { total: 265.5, front_squat: null })]);
+prCase('more_than_3', [lifted('p0', 'chrisajuan', [112, 140, 252, 235, 195],
+  { snatch: '2026-11-02', clean_jerk: '2026-11-05', total: '2026-11-05', back_squat: TODAY, front_squat: '2026-11-03' },
+  { snatch: 110, clean_jerk: 137.5, total: 247.5, back_squat: 230, front_squat: 190 })]);
+prCase('long_names', [
+  lifted('n0', 'abcdefghijklmnopq', [80], { snatch: TODAY }, { snatch: 79.5 }), // 17: still double size
+  lifted('n1', 'abcdefghijklmnopqr', [80], { snatch: TODAY }, { snatch: 79.5 }), // 18: single size
+  lifted('n2', 'a_really_long_instagram_handle_that_wont_fit', [80], { snatch: TODAY }, { snatch: 79.5 }),
+  lifted('n3', 'Zoë Ångström ♥ 💪', [80, 90], { snatch: TODAY, clean_jerk: TODAY }, { snatch: 70, clean_jerk: 85 }),
+  lifted('n4', 'a💪b💪c💪d💪e💪f💪g💪h💪i💪j💪k💪l💪m💪n💪o💪p💪q💪', [80], { snatch: TODAY }, {}), // cut mid-surrogate
+]);
+prCase('unknown_prev', [
+  lifted('u0', 'no record', [80], { snatch: TODAY }, undefined),
+  lifted('u1', 'was blank', [80], { snatch: TODAY }, { snatch: null }),
+  lifted('u2', 'corrected down', [80], { snatch: TODAY }, { snatch: 85 }),
+  lifted('u3', 'equal', [80], { snatch: TODAY }, { snatch: 80 }),
+  lifted('u4', 'some known', [80, 100, 180], { snatch: TODAY, clean_jerk: TODAY, total: TODAY }, { clean_jerk: 97.5 }),
+]);
+prCase('half_kilo', [
+  lifted('h0', 'tiny', [0.5], { snatch: TODAY }, { snatch: null }),
+  lifted('h1', 'half up', [72.5, 250.5, 499.5], { snatch: TODAY, clean_jerk: TODAY, total: TODAY },
+    { snatch: 72, clean_jerk: 249.5, total: 450 }),
+  lifted('h2', 'big half', [null, null, null, 499.5], { back_squat: TODAY }, { back_squat: 499 }),
+  lifted('h3', 'max', [null, null, null, null, 500], { front_squat: TODAY }, { front_squat: 0.5 }),
+]);
+prCase('window_edges', [
+  lifted('w0', 'six days', [80], { snatch: '2026-10-31' }, { snatch: 78 }),
+  lifted('w1', 'seven days', [80], { snatch: '2026-10-30' }, { snatch: 78 }),
+  lifted('w2', 'tomorrow', [80], { snatch: '2026-11-07' }, { snatch: 78 }),
+  lifted('w3', 'hidden', [80], { snatch: TODAY }, { snatch: 78 }, { visible: false }),
+  lifted('w4', '   ', [80], { snatch: TODAY }, { snatch: 78 }),
+  lifted('w5', 'cleared', [null], { snatch: TODAY }, { snatch: 78 }),
+  lifted('w6', 'lenient date', [80, 90], { snatch: '2026-02-30', clean_jerk: '2026-11-01' }, {}),
+  lifted('w7', 'garbage date', [80], { snatch: 'garbage' }, {}),
+]);
+prCase('window_edges_1day', prs.at(-1).athletes, { days: 1 });
+prCase('window_edges_60', prs.at(-1).athletes, { days: 60, today: '2026-12-15' });
+prCase('no_clock', prs[0].athletes, { today: '' });
+prCase('prs_off', prs[0].athletes, { days: 0 });
+prCase('chalkboard', withPrs.map((a, i) => withPrev(a, i % 3 ? { snatch: 50, total: 100, clean_jerk: null } : undefined)));
+const crowd = Array.from({ length: 25 }, (_, i) => lifted(`m${i}`, `lifter${i}`, [40 + i, 60 + i],
+  { snatch: `2026-11-0${6 - (i % 6)}`, ...(i % 4 ? {} : { clean_jerk: '2026-11-01' }) }, { snatch: 39.5 + i - (i % 3) }));
+prCase('many', crowd, { extra: [[3, 22, 25], [0, 0, 2], [5, 39, 40]] });
+
 // ------------------------------------------------------------------ power
 
 const powerCases = [];
@@ -326,10 +403,87 @@ for (const [name, rgba] of Object.entries(powerFrames)) {
   const slide = [100, 60, 30, 5].map((pct) => ({ pct, value: power.slideBrightness(peak, pct) }));
   powerCases.push({ name, frame, estimates, limited, peak: bits(peak), slide });
 }
+// settings.power: the same frames on one supply and on other ratings, plus the default
+// written out, which must match the two-supply cases above exactly.
+const powerConfigs = [
+  { supplies: 2, rated_a: 18, budget_pct: 85 },
+  { supplies: 1, rated_a: 80, budget_pct: 85 },
+  { supplies: 1, rated_a: 40, budget_pct: 90 },
+  { supplies: 1, rated_a: 18, budget_pct: 85 },
+  { supplies: 1, rated_a: 5, budget_pct: 50 },
+  { supplies: 2, rated_a: 30.5, budget_pct: 70 },
+];
+const powerConfigCases = powerConfigs.map((cfg) => ({
+  supplies: cfg.supplies,
+  rated_a: bits(cfg.rated_a),
+  budget_pct: cfg.budget_pct,
+  budget: bits(power.supplyBudgetA(cfg)),
+  frames: Object.entries(powerFrames).map(([name, rgba]) => {
+    const estimates = [100, 50, 33.3, 5].map((pct) => {
+      const { a, b } = power.estimateSupplyAmps(rgba, pct, cfg);
+      return { pct: bits(pct), a: bits(a), b: bits(b) };
+    });
+    const limited = [100, 90, 61, 52, 26, 5].map((pct) => ({ pct, value: power.limitedBrightness(rgba, pct, cfg) }));
+    // peak_a is always the busier half on the two-supply split, whatever the supplies.
+    const peak = Math.max(...Object.values(power.estimateSupplyAmps(rgba, 100)));
+    const slide = [100, 60, 30, 5].map((pct) => ({ pct, value: power.slideBrightness(peak, pct, cfg) }));
+    return { name, frame: `power_${name}.rle`, estimates, limited, slide };
+  }),
+  slideOnly: [[0, 80], [1e-9, 80], [7.65, 100], [14.7, 100], [29.4, 100], [34, 100], [3.1, 37]]
+    .map(([peak, pct]) => ({ peak: bits(peak), pct, value: power.slideBrightness(peak, pct, cfg) })),
+}));
+
 const slideOnly = [
   [0, 80], [-1, 80], [1e-9, 80], [1, 75], [power.SUPPLY_BUDGET_A, 100], [power.SUPPLY_BUDGET_A * 2, 80],
   [29.4, 100], [14.7, 100], [15.300000000000001, 100], [7.65, 100], [3.1, 37],
 ].map(([peak, pct]) => ({ peak: bits(peak), pct, value: power.slideBrightness(peak, pct) }));
+
+// ------------------------------------------------------------------ announcements
+
+const announce = [];
+// One frame per case, with the fit the JS chose, so a mismatch says whether the scale, the
+// wrapping or the drawing differs.
+function annCase(name, text, { index = 0, count = 1 } = {}) {
+  const fit = ann.fitAnnouncement(text, count);
+  const frame = writeFrame(`ann_${name}`, ann.renderAnnouncement({ text, index, count }));
+  announce.push({ name, text, index, count, frame, scale: fit.scale, lines: fit.lines, cut: fit.cut });
+}
+annCase('short_scale3', 'Welcome to The Strength Tank');
+annCase('medium_scale2', 'Gym closed Thursday for Thanksgiving. Open gym Friday 8 to 12.');
+annCase('long_scale1', 'Bring a friend week! Every member can bring one guest to any class from Monday to Saturday. Sign them in at the desk first and make sure they fill in the waiver.');
+annCase('line_breaks', 'OPEN GYM\nSaturday 8 to 12\n\nBring a friend');
+annCase('line_breaks_dots', 'OPEN GYM\nSaturday 8 to 12\n\nBring a friend', { index: 1, count: 3 });
+annCase('six_breaks', 'Mon\nTue\nWed\nThu\nFri\nSat\nSun');
+annCase('word_13', 'INTERNATIONAL day'); // 13 letters: still scale 3
+annCase('word_14', 'CONGRATULATION'); // 14: scale 2 rather than split
+annCase('word_split', 'Pneumonoultramicroscopicsilicovolcanoconiosis is a long word'); // 45: split at scale 1
+annCase('word_split_mid', 'go ' + 'x'.repeat(90) + ' now');
+annCase('max_200', 'Huge thanks to everyone who came out for the charity deadlift on Saturday. We raised over four thousand dollars for the food bank, and eleven of you set lifetime PRs. Photos are up on our Instagram now.');
+annCase('max_200_one_word', 'W'.repeat(200));
+annCase('cut', ['x'.repeat(45), 'y'.repeat(45), 'z'.repeat(45), 'q', 'r', 'w', 'v'].join('\n'));
+annCase('cut_dots', 'word '.repeat(40).trim(), { index: 2, count: 4 });
+annCase('non_ascii', 'Caf\u00e9 \u201cPR\u201d day \u2014 \ud83d\udcaa \u2665 Zo\u00eb\tok');
+annCase('emoji_long', '\ud83d\udcaa'.repeat(60));
+annCase('spaces', '   lots    of   spaces   ');
+annCase('empty', '');
+annCase('dots_1', 'One of one', { index: 0, count: 1 });
+annCase('dots_2', 'Second of two', { index: 1, count: 2 });
+annCase('dots_20_first', 'First of twenty', { index: 0, count: 20 });
+annCase('dots_20_last', 'Last of twenty', { index: 19, count: 20 });
+annCase('dots_capped', 'More than twenty', { index: 22, count: 25 });
+
+// Which announcements show, for a range of dates and no clock.
+const annList = [
+  ['undated', null, null], ['off', null, null, false], ['from_6th', '2026-11-06', null], ['from_7th', '2026-11-07', null],
+  ['to_6th', null, '2026-11-06'], ['to_5th', null, '2026-11-05'], ['nov', '2026-11-01', '2026-11-30'],
+  ['one_day', '2026-11-06', '2026-11-06'], ['new_year', '2026-12-31', '2027-01-01'],
+].map(([id, start_date, end_date, enabled = true]) => ({ id, text: id, enabled, start_date, end_date }));
+const crowdAnn = Array.from({ length: 25 }, (_, i) => ({ id: `c${i}`, text: `c${i}`, enabled: i % 7 !== 3, start_date: null, end_date: null }));
+const announceActive = [
+  ...['2026-11-06', '2026-11-05', '2026-11-07', '2026-11-30', '2026-12-01', '2026-12-31', '2027-01-01', '2027-01-02', '', 'garbage', '2026-11-6']
+    .map((today) => ({ today, list: annList, ids: ann.announcementScreens(annList, today || null).map((a) => a.id) })),
+  { today: '2026-11-06', list: crowdAnn, ids: ann.announcementScreens(crowdAnn, '2026-11-06').map((a) => a.id) },
+];
 
 // ------------------------------------------------------------------ small functions
 
@@ -356,14 +510,17 @@ const manifest = {
   constants: {
     W, H, PANEL_FULL_WHITE_A: bits(power.PANEL_FULL_WHITE_A), SUPPLY_RATED_A: bits(power.SUPPLY_RATED_A),
     SUPPLY_BUDGET_A: bits(power.SUPPLY_BUDGET_A), STORY_W, STORY_H, POST_SIZE, MAX_ROWS: layout.MAX_ROWS,
-    MIN_SECONDS: layout.MIN_SECONDS, MAX_SECONDS: layout.MAX_SECONDS,
+    MIN_SECONDS: layout.MIN_SECONDS, MAX_SECONDS: layout.MAX_SECONDS, MAX_PR_SCREENS: pr.MAX_PR_SCREENS,
+    MAX_ANNOUNCE_SCREENS: ann.MAX_ANNOUNCE_SCREENS,
   },
-  whiteboard, stories, posts, power: powerCases, slideOnly, formatKg, parse, formatAge, textWidths,
+  whiteboard, stories, posts, prs, power: powerCases, slideOnly, powerConfigs: powerConfigCases, formatKg, parse, formatAge,
+  textWidths, announce, announceActive,
 };
 fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify(manifest));
 
 const counts = {
-  frames: frameCount, whiteboard: whiteboard.length, stories: stories.length, posts: posts.length,
-  power: powerCases.length, slideOnly: slideOnly.length,
+  frames: frameCount, whiteboard: whiteboard.length, stories: stories.length, posts: posts.length, prs: prs.length,
+  announce: announce.length, announceActive: announceActive.length,
+  power: powerCases.length, slideOnly: slideOnly.length, powerConfigs: powerConfigCases.length,
 };
 console.log(`fixtures: ${JSON.stringify(counts)}; frames ${(rleBytes / 1024).toFixed(0)} KB RLE (raw ${(rawBytes / 1048576).toFixed(1)} MB)`);

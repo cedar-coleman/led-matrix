@@ -7,6 +7,9 @@
 #include <ArduinoJson.h>
 #include <string.h>
 
+#include <algorithm>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -412,12 +415,13 @@ void test_screen_time_limits() {
 }
 
 void test_slide_types_and_media() {
-  for (const char* t : {"instagram_story", "instagram_posts", "whiteboard"}) {
+  for (const char* t : {"instagram_story", "instagram_posts", "whiteboard", "new_prs"}) {
     const std::string body = std::string("[{\"id\": \"s1\", \"type\": \"") + t + "\", \"duration_s\": 6, \"enabled\": true}]";
     TEST_ASSERT_TRUE_MESSAGE(putSlides(body.c_str()).ok(), t);
   }
   ApiError e = putSlides("[{\"id\": \"s1\", \"type\": \"tiktok\", \"duration_s\": 6}]");
-  TEST_ASSERT_EQUAL_STRING("Slide 1: type must be one of whiteboard, media, instagram_story, instagram_posts", e.message.c_str());
+  TEST_ASSERT_EQUAL_STRING("Slide 1: type must be one of whiteboard, media, instagram_story, instagram_posts, new_prs, announcements",
+                           e.message.c_str());
   e = putSlides("[{\"id\": \"s1\", \"type\": \"media\", \"file\": \"nope.gif\", \"duration_s\": 10, \"enabled\": true}]");
   TEST_ASSERT_EQUAL(400, e.status);
   TEST_ASSERT_EQUAL_STRING("Slide 1: media file 'nope.gif' is not on the board", e.message.c_str());
@@ -484,7 +488,12 @@ void test_settings_defaults_fill() {
   settingsPublic(s.as<JsonObjectConst>(), pub.to<JsonObject>());
   TEST_ASSERT_EQUAL_STRING(
       "{\"title\":\"THE STRENGTH TANK\",\"brightness\":30,\"sort\":\"board\",\"pr_highlight_days\":7,"
-      "\"timezone\":\"America/Los_Angeles\",\"custom\":1,\"pin_set\":false}",
+      "\"timezone\":\"America/Los_Angeles\",\"schedule\":{\"enabled\":false,\"days\":{"
+      "\"mon\":[{\"start\":\"05:00\",\"end\":\"21:00\"}],\"tue\":[{\"start\":\"05:00\",\"end\":\"21:00\"}],"
+      "\"wed\":[{\"start\":\"05:00\",\"end\":\"21:00\"}],\"thu\":[{\"start\":\"05:00\",\"end\":\"21:00\"}],"
+      "\"fri\":[{\"start\":\"05:00\",\"end\":\"21:00\"}],\"sat\":[{\"start\":\"05:00\",\"end\":\"21:00\"}],"
+      "\"sun\":[{\"start\":\"05:00\",\"end\":\"21:00\"}]}},"
+      "\"power\":{\"supplies\":2,\"rated_a\":18,\"budget_pct\":85},\"custom\":1,\"pin_set\":false}",
       dump(pub.as<JsonVariantConst>()).c_str());
 }
 
@@ -519,7 +528,13 @@ void test_control() {
   std::string action;
   TEST_ASSERT_TRUE(parseControl(parse("{\"action\": \"pause\"}").as<JsonVariantConst>(), &action).ok());
   TEST_ASSERT_EQUAL_STRING("pause", action.c_str());
-  TEST_ASSERT_EQUAL(400, parseControl(parse("{\"action\": \"explode\"}").as<JsonVariantConst>(), &action).status);
+  for (const char* a : {"wake", "sleep", "next", "resume"}) {
+    TEST_ASSERT_TRUE(parseControl(parse((std::string("{\"action\": \"") + a + "\"}").c_str()).as<JsonVariantConst>(), &action).ok());
+    TEST_ASSERT_EQUAL_STRING(a, action.c_str());
+  }
+  const ApiError bad = parseControl(parse("{\"action\": \"explode\"}").as<JsonVariantConst>(), &action);
+  TEST_ASSERT_EQUAL(400, bad.status);
+  TEST_ASSERT_EQUAL_STRING("action must be next, prev, pause, resume, wake or sleep", bad.message.c_str());
   JsonDocument nul;
   TEST_ASSERT_EQUAL(400, parseControl(nul.as<JsonVariantConst>(), &action).status);
 }
@@ -796,6 +811,132 @@ void test_lower_or_same_keeps_dates_and_client_dates_are_ignored() {
   TEST_ASSERT_EQUAL_STRING("{}", dump(out[1]["pr_dates"]).c_str());
 }
 
+// The mock's test_new_prs_slide_type: per-athlete seconds within 5..999, and file dropped.
+void test_new_prs_slide_type() {
+  for (const char* d : {"5", "999", "8"}) {
+    const std::string body = std::string("[{\"id\": \"p1\", \"type\": \"new_prs\", \"duration_s\": ") + d + "}]";
+    TEST_ASSERT_TRUE_MESSAGE(putSlides(body.c_str()).ok(), d);
+  }
+  for (const char* d : {"4", "1000", "8.5", "true"}) {
+    const std::string body = std::string("[{\"id\": \"p1\", \"type\": \"new_prs\", \"duration_s\": ") + d + "}]";
+    TEST_ASSERT_FALSE_MESSAGE(putSlides(body.c_str()).ok(), d);
+  }
+  JsonDocument in = parse("[{\"id\": \"p1\", \"type\": \"new_prs\", \"duration_s\": 8, \"file\": \"x.gif\", \"enabled\": false}]");
+  JsonDocument out;
+  TEST_ASSERT_TRUE(validatePlaylist(in.as<JsonArrayConst>(), {}, out.to<JsonArray>()).ok());
+  TEST_ASSERT_EQUAL_STRING("[{\"id\":\"p1\",\"type\":\"new_prs\",\"duration_s\":8,\"enabled\":false}]",
+                           dump(out.as<JsonVariantConst>()).c_str());
+  TEST_ASSERT_EQUAL_STRING("Slide 1: type must be one of whiteboard, media, instagram_story, instagram_posts, new_prs, announcements",
+                           putSlides("[{\"id\": \"p1\", \"type\": \"new_pr\", \"duration_s\": 8}]").message.c_str());
+}
+
+// tests/announcement_cases.json: the cases the mock's AnnouncementTest runs, so both give
+// the same answer, message for message.
+void test_announcement_validation_matches_the_mock() {
+  std::string here = __FILE__;
+  here = here.substr(0, here.find_last_of('/'));
+  std::string text;
+  for (const std::string& p : {std::string("../tests/announcement_cases.json"), here + "/../../../tests/announcement_cases.json"}) {
+    std::ifstream f(p);
+    if (!f) continue;
+    std::stringstream ss;
+    ss << f.rdbuf();
+    text = ss.str();
+    break;
+  }
+  TEST_ASSERT_FALSE_MESSAGE(text.empty(), "tests/announcement_cases.json not found");
+  JsonDocument doc;
+  TEST_ASSERT_EQUAL(0, static_cast<int>(deserializeJson(doc, text).code()));
+  int n = 0;
+  for (JsonObjectConst c : doc["cases"].as<JsonArrayConst>()) {
+    const char* name = c["name"];
+    JsonDocument out;
+    const ApiError e = validateAnnouncements(c["announcements"].as<JsonArrayConst>(), out.to<JsonArray>());
+    if (c["error"].is<const char*>()) {
+      TEST_ASSERT_EQUAL_MESSAGE(400, e.status, name);
+      TEST_ASSERT_EQUAL_STRING_MESSAGE("invalid", e.code.c_str(), name);
+      TEST_ASSERT_EQUAL_STRING_MESSAGE(c["error"].as<const char*>(), e.message.c_str(), name);
+    } else {
+      TEST_ASSERT_TRUE_MESSAGE(e.ok(), (std::string(name) + ": " + e.message).c_str());
+      TEST_ASSERT_EQUAL_STRING_MESSAGE(dump(c["saved"]).c_str(), dump(out.as<JsonVariantConst>()).c_str(), name);
+    }
+    n++;
+  }
+  TEST_ASSERT_TRUE(n >= 40);
+
+  for (const char* d : {"2026-11-06", "2028-02-29", "2000-02-29", "0001-01-01", "9999-12-31"}) TEST_ASSERT_TRUE_MESSAGE(isCalendarDate(d), d);
+  for (const char* d : {"2026-02-29", "1900-02-29", "2026-04-31", "0000-01-01", "2026-00-01", "2026-11-00", "2026-11-6", "2026/11/06", ""}) {
+    TEST_ASSERT_FALSE_MESSAGE(isCalendarDate(d), d);
+  }
+}
+
+// The mock's AnnouncementTest.test_slide_type: per-announcement seconds, file dropped.
+void test_announcements_slide_type() {
+  for (const char* d : {"5", "999", "8"}) {
+    const std::string body = std::string("[{\"id\": \"n\", \"type\": \"announcements\", \"duration_s\": ") + d + "}]";
+    TEST_ASSERT_TRUE_MESSAGE(putSlides(body.c_str()).ok(), d);
+  }
+  for (const char* d : {"4", "1000", "8.5", "true"}) {
+    const std::string body = std::string("[{\"id\": \"n\", \"type\": \"announcements\", \"duration_s\": ") + d + "}]";
+    TEST_ASSERT_FALSE_MESSAGE(putSlides(body.c_str()).ok(), d);
+  }
+  JsonDocument in = parse("[{\"id\": \"n\", \"type\": \"announcements\", \"duration_s\": 12, \"file\": \"x.gif\", \"enabled\": false}]");
+  JsonDocument out;
+  TEST_ASSERT_TRUE(validatePlaylist(in.as<JsonArrayConst>(), {}, out.to<JsonArray>()).ok());
+  TEST_ASSERT_EQUAL_STRING("[{\"id\":\"n\",\"type\":\"announcements\",\"duration_s\":12,\"enabled\":false}]",
+                           dump(out.as<JsonVariantConst>()).c_str());
+  TEST_ASSERT_EQUAL_STRING("Slide 1: type must be one of whiteboard, media, instagram_story, instagram_posts, new_prs, announcements",
+                           putSlides("[{\"id\": \"n\", \"type\": \"announcement\", \"duration_s\": 8}]").message.c_str());
+  TEST_ASSERT_EQUAL_STRING("announcements", slideTypeName(wall::SlideType::kAnnouncements));
+  TEST_ASSERT_EQUAL_STRING("new_prs", slideTypeName(wall::SlideType::kNewPrs));
+}
+
+// The mock's test_previous_value_recorded_with_the_date, step for step.
+void test_previous_value_recorded_with_the_date() {
+  JsonDocument stored;
+  stored.to<JsonArray>();
+  const std::string today = "2026-11-06";
+  JsonDocument out = save(stored, ann().c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{}", dump(out[0]["pr_prev"]).c_str());
+  out = save(stored, ann(", \"snatch\": 82.5, \"clean_jerk\": 100").c_str(), today);  // up from 80, and filled in
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":80,\"clean_jerk\":null}", dump(out[0]["pr_prev"]).c_str());
+  for (const char* change : {", \"snatch\": 70", ", \"snatch\": 70, \"back_squat\": 150", ", \"snatch\": null"}) {
+    out = save(stored, ann((std::string(", \"clean_jerk\": 100") + change).c_str()).c_str(), today);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("{\"snatch\":80,\"clean_jerk\":null}", dump(out[0]["pr_prev"]).c_str(), change);
+  }
+  out = save(stored, ann(", \"snatch\": 75, \"clean_jerk\": 100").c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":null,\"clean_jerk\":null}", dump(out[0]["pr_prev"]).c_str());
+  out = save(stored, ann(", \"snatch\": 77.5, \"clean_jerk\": 100.5").c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":75,\"clean_jerk\":100}", dump(out[0]["pr_prev"]).c_str());
+  // Kept next to pr_dates, in the order the file is written.
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":\"2026-11-06\",\"clean_jerk\":\"2026-11-06\"}", dump(out[0]["pr_dates"]).c_str());
+  std::string keys;
+  for (JsonPairConst kv : out[0].as<JsonObjectConst>()) keys += std::string(kv.key().c_str()) + " ";
+  TEST_ASSERT_EQUAL_STRING("id name visible snatch clean_jerk total back_squat front_squat notes pr_dates pr_prev ", keys.c_str());
+}
+
+void test_client_previous_values_are_ignored() {
+  JsonDocument stored;
+  stored.to<JsonArray>();
+  const std::string today = "2026-11-06";
+  save(stored, ann().c_str(), today);
+  JsonDocument out =
+      save(stored, ann(", \"snatch\": 90, \"pr_prev\": {\"snatch\": 1, \"back_squat\": 2, \"bench\": 3}").c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":80}", dump(out[0]["pr_prev"]).c_str());
+  out = save(stored, ann(", \"snatch\": 90, \"pr_prev\": {}").c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":80}", dump(out[0]["pr_prev"]).c_str());
+  const std::string two = std::string("[") + kAnn + ", \"snatch\": 90}, {\"id\": \"a2\", \"name\": \"Bo\", \"snatch\": 60, "
+                                                    "\"pr_prev\": {\"snatch\": 50}}]";
+  out = save(stored, two.c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{}", dump(out[1]["pr_prev"]).c_str());
+  // A file written before pr_prev existed: the first PR after the update records one.
+  JsonDocument old = parse("[{\"id\": \"a1\", \"name\": \"Ann\", \"snatch\": 80, \"back_squat\": 150, \"pr_dates\": {\"snatch\": \"2026-10-01\"}}]");
+  out = save(old, ann(", \"snatch\": 80").c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{}", dump(out[0]["pr_prev"]).c_str());
+  out = save(old, ann(", \"snatch\": 81").c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":80}", dump(out[0]["pr_prev"]).c_str());
+}
+
 void test_no_stamp_without_valid_time() {
   JsonDocument stored;
   stored.to<JsonArray>();
@@ -803,6 +944,11 @@ void test_no_stamp_without_valid_time() {
   JsonDocument out = save(stored, ann(", \"snatch\": 90").c_str(), "");
   TEST_ASSERT_EQUAL(90, out[0]["snatch"].as<int>());
   TEST_ASSERT_EQUAL_STRING("{}", dump(out[0]["pr_dates"]).c_str());
+  TEST_ASSERT_EQUAL_STRING("{}", dump(out[0]["pr_prev"]).c_str());
+  save(stored, ann(", \"snatch\": 95").c_str(), "2026-11-06");
+  out = save(stored, ann(", \"snatch\": 100").c_str(), "");  // kept as they were, not restamped
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":\"2026-11-06\"}", dump(out[0]["pr_dates"]).c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":90}", dump(out[0]["pr_prev"]).c_str());
 }
 
 // ---- status ------------------------------------------------------------------------------------
@@ -834,13 +980,20 @@ void test_content_round_trip() {
   settings["brightness"] = 70;
   JsonDocument athletes = parse(
       "{\"rev\": 3, \"athletes\": [{\"id\": \"a1\", \"name\": \"Ann\", \"visible\": true, \"snatch\": 80, \"clean_jerk\": 100.5, "
-      "\"total\": null, \"back_squat\": null, \"front_squat\": 120, \"notes\": \"\", \"pr_dates\": {\"snatch\": \"2026-11-06\"}}, "
+      "\"total\": null, \"back_squat\": null, \"front_squat\": 120, \"notes\": \"\", \"pr_dates\": {\"snatch\": \"2026-11-06\", "
+      "\"clean_jerk\": \"2026-11-05\"}, \"pr_prev\": {\"snatch\": 77.5, \"clean_jerk\": null}}, "
       "{\"id\": \"a2\", \"name\": \"Bo\", \"visible\": false, \"snatch\": null, \"clean_jerk\": null, \"total\": null, "
       "\"back_squat\": null, \"front_squat\": null, \"notes\": \"x\", \"pr_dates\": {}}]}");
   JsonDocument playlist = parse(
       "{\"rev\": 2, \"slides\": [{\"id\": \"s0\", \"type\": \"media\", \"file\": \"logo.gif\", \"duration_s\": 10, \"enabled\": true}, "
       "{\"id\": \"s1\", \"type\": \"whiteboard\", \"duration_s\": 8, \"enabled\": false}, "
-      "{\"id\": \"s2\", \"type\": \"instagram_story\", \"duration_s\": 6, \"enabled\": true}]}");
+      "{\"id\": \"s2\", \"type\": \"instagram_story\", \"duration_s\": 6, \"enabled\": true}, "
+      "{\"id\": \"s3\", \"type\": \"new_prs\", \"duration_s\": 9, \"enabled\": true}, "
+      "{\"id\": \"s4\", \"type\": \"announcements\", \"duration_s\": 11, \"enabled\": true}]}");
+  JsonDocument announcements = parse(
+      "{\"rev\": 5, \"announcements\": [{\"id\": \"n1\", \"text\": \"Open gym\\nSaturday\", \"enabled\": true, "
+      "\"start_date\": null, \"end_date\": null}, {\"id\": \"n2\", \"text\": \"Caf\\u00e9\", \"enabled\": false, "
+      "\"start_date\": \"2026-11-01\", \"end_date\": \"2026-11-30\"}]}");
   JsonDocument media = parse("{\"logo.gif\": {\"frames\": 1, \"peak_a\": 6.42, \"uploaded\": \"2026-11-06\"}}");
   JsonDocument ig = parse(
       "{\"enabled\": true, \"username\": \"gym\", \"stories\": [{\"id\": \"1\", \"timestamp\": \"2026-11-06T18:02:11+0000\", "
@@ -850,6 +1003,7 @@ void test_content_round_trip() {
   src.settings = settings.as<JsonObjectConst>();
   src.athletes = athletes.as<JsonObjectConst>();
   src.playlist = playlist.as<JsonObjectConst>();
+  src.announcements = announcements.as<JsonObjectConst>();
   src.mediaIndex = media.as<JsonObjectConst>();
   src.mediaFiles = {"logo.gif", "other.gif"};
   src.instagram = ig.as<JsonObjectConst>();
@@ -861,10 +1015,24 @@ void test_content_round_trip() {
   TEST_ASSERT_EQUAL_FLOAT(100.5f, c.athletes[0].kg[wall::kCleanJerk]);
   TEST_ASSERT_FALSE(c.athletes[0].has[wall::kTotal]);
   TEST_ASSERT_EQUAL_STRING("2026-11-06", c.athletes[0].pr_date[wall::kSnatch].c_str());
+  TEST_ASSERT_TRUE(c.athletes[0].has_prev[wall::kSnatch]);
+  TEST_ASSERT_EQUAL_FLOAT(77.5f, c.athletes[0].prev_kg[wall::kSnatch]);
+  TEST_ASSERT_FALSE(c.athletes[0].has_prev[wall::kCleanJerk]);  // null: blank before
+  TEST_ASSERT_FALSE(c.athletes[0].has_prev[wall::kTotal]);      // no record
+  TEST_ASSERT_FALSE(c.athletes[1].has_prev[wall::kSnatch]);     // no pr_prev at all
   TEST_ASSERT_FALSE(c.athletes[1].visible);
   TEST_ASSERT_TRUE(c.settings.sort == wall::SortMode::kTotal);
   TEST_ASSERT_EQUAL(70, c.settings.brightness);
-  TEST_ASSERT_EQUAL(3, c.slides.size());
+  TEST_ASSERT_EQUAL(5, c.slides.size());
+  TEST_ASSERT_TRUE(c.slides[3].type == wall::SlideType::kNewPrs);
+  TEST_ASSERT_TRUE(c.slides[4].type == wall::SlideType::kAnnouncements);
+  TEST_ASSERT_EQUAL(11, c.slides[4].duration_s);
+  TEST_ASSERT_EQUAL(2, c.announcements.size());
+  TEST_ASSERT_EQUAL_STRING("Open gym\nSaturday", c.announcements[0].text.c_str());
+  TEST_ASSERT_EQUAL_STRING("", c.announcements[0].start_date.c_str());
+  TEST_ASSERT_FALSE(c.announcements[1].enabled);
+  TEST_ASSERT_EQUAL_STRING("2026-11-30", c.announcements[1].end_date.c_str());
+  TEST_ASSERT_EQUAL(9, c.slides[3].duration_s);
   TEST_ASSERT_TRUE(c.slides[0].type == wall::SlideType::kMedia);
   TEST_ASSERT_FALSE(c.slides[1].enabled);
   TEST_ASSERT_EQUAL(2, c.media.size());
@@ -878,16 +1046,35 @@ void test_content_round_trip() {
   athletesToJson(c.athletes, back.to<JsonArray>());
   TEST_ASSERT_EQUAL_STRING(
       "[{\"id\":\"a1\",\"name\":\"Ann\",\"visible\":true,\"snatch\":80,\"clean_jerk\":100.5,\"total\":null,\"back_squat\":null,"
-      "\"front_squat\":120,\"pr_dates\":{\"snatch\":\"2026-11-06\"}},{\"id\":\"a2\",\"name\":\"Bo\",\"visible\":false,"
-      "\"snatch\":null,\"clean_jerk\":null,\"total\":null,\"back_squat\":null,\"front_squat\":null,\"pr_dates\":{}}]",
+      "\"front_squat\":120,\"pr_dates\":{\"snatch\":\"2026-11-06\",\"clean_jerk\":\"2026-11-05\"},\"pr_prev\":{\"snatch\":77.5}},"
+      "{\"id\":\"a2\",\"name\":\"Bo\",\"visible\":false,"
+      "\"snatch\":null,\"clean_jerk\":null,\"total\":null,\"back_squat\":null,\"front_squat\":null,\"pr_dates\":{},\"pr_prev\":{}}]",
       dump(back.as<JsonVariantConst>()).c_str());
   JsonDocument slides;
   slidesToJson(c.slides, slides.to<JsonArray>());
   TEST_ASSERT_EQUAL_STRING(
       "[{\"id\":\"s0\",\"type\":\"media\",\"duration_s\":10,\"enabled\":true,\"file\":\"logo.gif\"},"
       "{\"id\":\"s1\",\"type\":\"whiteboard\",\"duration_s\":8,\"enabled\":false},"
-      "{\"id\":\"s2\",\"type\":\"instagram_story\",\"duration_s\":6,\"enabled\":true}]",
+      "{\"id\":\"s2\",\"type\":\"instagram_story\",\"duration_s\":6,\"enabled\":true},"
+      "{\"id\":\"s3\",\"type\":\"new_prs\",\"duration_s\":9,\"enabled\":true},"
+      "{\"id\":\"s4\",\"type\":\"announcements\",\"duration_s\":11,\"enabled\":true}]",
       dump(slides.as<JsonVariantConst>()).c_str());
+  JsonDocument anns;
+  announcementsToJson(c.announcements, anns.to<JsonArray>());
+  TEST_ASSERT_EQUAL_STRING(dump(announcements["announcements"]).c_str(), dump(anns.as<JsonVariantConst>()).c_str());
+
+  TEST_ASSERT_EQUAL(2, c.settings.power.supplies);  // no power key: today's two 18 A supplies
+  TEST_ASSERT_TRUE(c.settings.power.rated_a == 18);
+  TEST_ASSERT_EQUAL(85, c.settings.power.budget_pct);
+  settings["power"] = parse("{\"supplies\": 1, \"rated_a\": 80.5, \"budget_pct\": 90}").as<JsonObjectConst>();
+  src.settings = settings.as<JsonObjectConst>();
+  c = buildContent(src, 9);
+  TEST_ASSERT_EQUAL(1, c.settings.power.supplies);
+  TEST_ASSERT_TRUE(c.settings.power.rated_a == 80.5);
+  TEST_ASSERT_EQUAL(90, c.settings.power.budget_pct);
+  settings["power"]["supplies"] = 3;  // a hand-edited file the API wouldn't accept: the default
+  src.settings = settings.as<JsonObjectConst>();
+  TEST_ASSERT_EQUAL(2, buildContent(src, 9).settings.power.supplies);
 
   src.igTokenSet = false;  // device: no token, no tiles (API.md section 12)
   c = buildContent(src, 10);
@@ -999,6 +1186,293 @@ void test_text_helpers() {
   TEST_ASSERT_TRUE(isJsonNumber(parse("[1e2]")[0]));
 }
 
+
+// ---- display schedule and power (API.md 7.3, 7.4) -------------------------------------------------
+// The same cases as ScheduleTest in tests/test_mock_server.py, with the instants worked out
+// by Python's zoneinfo.
+
+namespace {
+
+const char* const kWeekdays = "[{\"start\": \"05:00\", \"end\": \"21:00\"}]";
+
+// Mon to Fri 05:00-21:00, Saturday two ranges (given out of order), Sunday as `sun`.
+std::string week(const char* sun = "[]", const char* sat = nullptr) {
+  std::string d = std::string("{\"enabled\": true, \"days\": {");
+  for (const char* k : {"mon", "tue", "wed", "thu", "fri"}) d += std::string("\"") + k + "\": " + kWeekdays + ", ";
+  d += std::string("\"sat\": ") +
+       (sat ? sat : "[{\"start\": \"16:00\", \"end\": \"18:00\"}, {\"start\": \"08:00\", \"end\": \"12:00\"}]");
+  return d + ", \"sun\": " + sun + "}}";
+}
+
+Schedule sched(const std::string& json) {
+  JsonDocument d = parse(json.c_str());
+  JsonDocument clean;
+  TEST_ASSERT_TRUE_MESSAGE(validateSchedule(d.as<JsonVariantConst>(), clean.to<JsonObject>()).ok(), json.c_str());
+  return scheduleFromJson(clean.as<JsonVariantConst>());
+}
+
+const int kLA = 0;
+
+// Runs evaluateSchedule and renders what /api/status would say.
+std::string stateAt(const Schedule& s, int64_t now, Override* ov, bool clock = true, int zone = kLA) {
+  JsonDocument out;
+  scheduleStatusJson(evaluateSchedule(s, zone, clock, now, ov), zone, out.to<JsonObject>());
+  return dump(out.as<JsonVariantConst>());
+}
+
+std::string st(bool on, const char* state, const char* next) {
+  return std::string("{\"display_on\":") + (on ? "true" : "false") + ",\"schedule_state\":\"" + state +
+         "\",\"next_change\":" + (next ? std::string("\"") + next + "\"" : "null") + "}";
+}
+
+}  // namespace
+
+void test_schedule_validation() {
+  struct Case {
+    std::string body;
+    const char* message;
+    const char* day;
+  };
+  auto day = [](const char* key, const char* windows) {
+    JsonDocument d = parse(week().c_str());
+    d["days"][key] = parse(windows).as<JsonVariantConst>();
+    return dump(d.as<JsonVariantConst>());
+  };
+  const char* fmt = "times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)";
+  const std::string fmtThu = std::string("Thursday: ") + fmt;
+  const Case cases[] = {
+      {"\"x\"", "Schedule must be an object with enabled and days", ""},
+      {"{\"enabled\": 1, \"days\": {}}", "Schedule enabled must be true or false", ""},
+      {"{\"enabled\": true}", "Schedule days must list mon, tue, wed, thu, fri, sat and sun", ""},
+      {"{\"enabled\": false, \"days\": {\"mon\": []}}", "Schedule days must list mon, tue, wed, thu, fri, sat and sun", ""},
+      {day("tue", "[{\"start\": \"05:00\", \"end\": \"06:00\"}, {\"start\": \"07:00\", \"end\": \"08:00\"}, "
+                  "{\"start\": \"09:00\", \"end\": \"10:00\"}]"),
+       "Tuesday: give a list of 0 to 2 time ranges", "tue"},
+      {day("wed", "{\"start\": \"05:00\", \"end\": \"21:00\"}"), "Wednesday: give a list of 0 to 2 time ranges", "wed"},
+      {day("thu", "[{\"start\": \"5:00\", \"end\": \"21:00\"}]"), fmtThu.c_str(), "thu"},
+      {day("thu", "[{\"start\": \"24:00\", \"end\": \"24:00\"}]"), fmtThu.c_str(), "thu"},
+      {day("thu", "[{\"start\": \"05:00\", \"end\": \"24:01\"}]"), fmtThu.c_str(), "thu"},
+      {day("thu", "[{\"start\": \"05:00\"}]"), fmtThu.c_str(), "thu"},
+      {day("thu", "[\"05:00-21:00\"]"), fmtThu.c_str(), "thu"},
+      {day("thu", "[{\"start\": \"05:00\\n\", \"end\": \"21:00\"}]"), fmtThu.c_str(), "thu"},
+      {day("thu", "[{\"start\": \"05:60\", \"end\": \"21:00\"}]"), fmtThu.c_str(), "thu"},
+      {day("fri", "[{\"start\": \"09:00\", \"end\": \"09:00\"}]"), "Friday: a time range must end after it starts", "fri"},
+      {day("fri", "[{\"start\": \"21:00\", \"end\": \"05:00\"}]"), "Friday: a time range must end after it starts", "fri"},
+      {day("sun", "[{\"start\": \"05:00\", \"end\": \"12:00\"}, {\"start\": \"11:59\", \"end\": \"13:00\"}]"),
+       "Sunday: the two time ranges overlap", "sun"},
+  };
+  for (const Case& c : cases) {
+    JsonDocument b = parse(c.body.c_str());
+    JsonDocument out;
+    const ApiError e = validateSchedule(b.as<JsonVariantConst>(), out.to<JsonObject>());
+    TEST_ASSERT_EQUAL_MESSAGE(400, e.status, c.body.c_str());
+    TEST_ASSERT_EQUAL_STRING("invalid", e.code.c_str());
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(c.message, e.message.c_str(), c.body.c_str());
+    TEST_ASSERT_EQUAL_STRING(c.day, e.day.c_str());
+    JsonDocument body;
+    e.toJson(body.to<JsonObject>());
+    TEST_ASSERT_EQUAL(*c.day ? 3 : 2, body.size());
+  }
+  // Through PUT /api/settings: nothing is written on a bad schedule.
+  JsonDocument s = settingsWithPin();
+  const std::string before = dump(s.as<JsonVariantConst>());
+  TEST_ASSERT_EQUAL(400, putSettings(s, ("{\"title\": \"NEW\", \"schedule\": " + day("mon", "[1]") + "}").c_str()).status);
+  TEST_ASSERT_EQUAL_STRING(before.c_str(), dump(s.as<JsonVariantConst>()).c_str());
+  // Touching ranges are fine, 24:00 ends a day, ranges come back sorted, extra keys go.
+  const std::string ok = day("sun", "[{\"start\": \"12:00\", \"end\": \"24:00\", \"note\": \"x\"}, {\"start\": \"00:00\", \"end\": \"12:00\"}]");
+  TEST_ASSERT_TRUE(putSettings(s, ("{\"schedule\": " + ok + "}").c_str()).ok());
+  TEST_ASSERT_EQUAL_STRING("[{\"start\":\"00:00\",\"end\":\"12:00\"},{\"start\":\"12:00\",\"end\":\"24:00\"}]",
+                           dump(s["schedule"]["days"]["sun"]).c_str());
+  TEST_ASSERT_EQUAL_STRING("[{\"start\":\"08:00\",\"end\":\"12:00\"},{\"start\":\"16:00\",\"end\":\"18:00\"}]",
+                           dump(s["schedule"]["days"]["sat"]).c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"enabled\":true,\"days\":{", dump(s["schedule"]).substr(0, 24).c_str());
+  // A damaged stored schedule reads as off, never as a dark wall.
+  JsonDocument broken = parse("{\"enabled\": true, \"days\": {\"mon\": []}}");
+  TEST_ASSERT_FALSE(scheduleFromJson(broken.as<JsonVariantConst>()).enabled);
+}
+
+void test_power_setting() {
+  JsonDocument s = settingsWithPin();
+  const struct {
+    const char* body;
+    const char* message;
+  } cases[] = {
+      {"\"x\"", "Power must be an object with supplies, rated_a and budget_pct"},
+      {"{\"supplies\": 3, \"rated_a\": 18, \"budget_pct\": 85}", "Power supplies must be 1 or 2"},
+      {"{\"supplies\": 1.0, \"rated_a\": 18, \"budget_pct\": 85}", "Power supplies must be 1 or 2"},
+      {"{\"supplies\": true, \"rated_a\": 18, \"budget_pct\": 85}", "Power supplies must be 1 or 2"},
+      {"{\"supplies\": 1, \"rated_a\": 4.9, \"budget_pct\": 85}", "Supply rating must be 5 to 100 A"},
+      {"{\"supplies\": 1, \"rated_a\": 100.5, \"budget_pct\": 85}", "Supply rating must be 5 to 100 A"},
+      {"{\"supplies\": 1, \"rated_a\": \"80\", \"budget_pct\": 85}", "Supply rating must be 5 to 100 A"},
+      {"{\"supplies\": 1, \"rated_a\": true, \"budget_pct\": 85}", "Supply rating must be 5 to 100 A"},
+      {"{\"supplies\": 1, \"budget_pct\": 85}", "Supply rating must be 5 to 100 A"},
+      {"{\"supplies\": 1, \"rated_a\": 80, \"budget_pct\": 96}", "Power budget must be 50 to 95 percent"},
+      {"{\"supplies\": 1, \"rated_a\": 80, \"budget_pct\": 49}", "Power budget must be 50 to 95 percent"},
+      {"{\"supplies\": 1, \"rated_a\": 80, \"budget_pct\": 85.0}", "Power budget must be 50 to 95 percent"},
+  };
+  for (const auto& c : cases) {
+    const ApiError e = putSettings(s, (std::string("{\"power\": ") + c.body + "}").c_str());
+    TEST_ASSERT_EQUAL_MESSAGE(400, e.status, c.body);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(c.message, e.message.c_str(), c.body);
+  }
+  TEST_ASSERT_EQUAL_STRING("{\"supplies\":2,\"rated_a\":18,\"budget_pct\":85}", dump(s["power"]).c_str());
+  TEST_ASSERT_TRUE(putSettings(s, "{\"power\": {\"supplies\": 1, \"rated_a\": 80, \"budget_pct\": 85, \"x\": 1}}").ok());
+  TEST_ASSERT_EQUAL_STRING("{\"supplies\":1,\"rated_a\":80,\"budget_pct\":85}", dump(s["power"]).c_str());
+  TEST_ASSERT_TRUE(putSettings(s, "{\"power\": {\"supplies\": 2, \"rated_a\": 30.5, \"budget_pct\": 50}}").ok());
+  TEST_ASSERT_EQUAL_STRING("{\"supplies\":2,\"rated_a\":30.5,\"budget_pct\":50}", dump(s["power"]).c_str());
+}
+
+void test_local_iso_and_offset_changes() {
+  TEST_ASSERT_EQUAL_STRING("2026-11-06T21:00:00-08:00", localIso(kLA, 1794027600).c_str());
+  TEST_ASSERT_EQUAL_STRING("2026-11-07T05:00:00+00:00", localIso(zoneIndex("UTC"), 1794027600).c_str());
+  TEST_ASSERT_EQUAL_STRING("2026-11-07T00:00:00-05:00", localIso(zoneIndex("America/New_York"), 1794027600).c_str());
+  TEST_ASSERT_EQUAL_STRING("2026-03-08T03:00:00-07:00", localIso(kLA, 1772964000).c_str());
+  const char* la = kZones[kLA].posix;
+  TEST_ASSERT_EQUAL(1772964000LL, nextOffsetChange(la, 1772960400));  // spring forward, 10:00 UTC
+  TEST_ASSERT_EQUAL(1793523600LL, nextOffsetChange(la, 1772964000));  // the switch itself is not "after"
+  TEST_ASSERT_EQUAL(1805018400LL, nextOffsetChange(la, 1794024000));  // November: next March
+  TEST_ASSERT_EQUAL(-1LL, nextOffsetChange(kZones[zoneIndex("America/Phoenix")].posix, 1794024000));
+  TEST_ASSERT_EQUAL(-1LL, nextOffsetChange(kZones[zoneIndex("UTC")].posix, 1794024000));
+}
+
+void test_schedule_states_through_a_week() {
+  const Schedule s = sched(week());
+  Override ov;
+  const struct {
+    int64_t now;
+    std::string want;
+  } cases[] = {
+      {1794024000, st(true, "on", "2026-11-06T21:00:00-08:00")},     // Fri 20:00
+      {1794027600, st(false, "off", "2026-11-07T08:00:00-08:00")},   // Fri 21:00
+      {1794085200, st(false, "off", "2026-11-07T16:00:00-08:00")},   // Sat 13:00
+      {1794103199, st(true, "on", "2026-11-07T18:00:00-08:00")},     // Sat 17:59:59
+      {1794106800, st(false, "off", "2026-11-09T05:00:00-08:00")},   // Sat 19:00; Sunday is off
+      {1794229140, st(false, "off", "2026-11-09T05:00:00-08:00")},   // Mon 04:59
+  };
+  for (const auto& c : cases) TEST_ASSERT_EQUAL_STRING(c.want.c_str(), stateAt(s, c.now, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(true, "on", "2026-11-09T21:00:00-05:00").c_str(),
+                           stateAt(s, 1794229140, &ov, true, zoneIndex("America/New_York")).c_str());
+  // Disabled, no clock, never changing.
+  Schedule off = s;
+  off.enabled = false;
+  TEST_ASSERT_EQUAL_STRING(st(true, "always_on", nullptr).c_str(), stateAt(off, 1794024000, &ov).c_str());
+  const Schedule none = sched("{\"enabled\": true, \"days\": {\"mon\": [], \"tue\": [], \"wed\": [], \"thu\": [], "
+                              "\"fri\": [], \"sat\": [], \"sun\": []}}");
+  TEST_ASSERT_EQUAL_STRING(st(false, "off", nullptr).c_str(), stateAt(none, 1794024000, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(true, "no_clock", nullptr).c_str(), stateAt(none, 1794024000, &ov, false).c_str());
+}
+
+void test_schedule_overrides() {
+  const Schedule s = sched(week());
+  // wake at Fri 22:00: on by hand until the schedule turns on at 08:00, which keeps it on to 12:00.
+  Override ov = overrideFor(s, kLA, true, 1794031200, true);
+  TEST_ASSERT_TRUE(ov.active && ov.on);
+  TEST_ASSERT_EQUAL(1794067200LL, ov.until);
+  TEST_ASSERT_EQUAL_STRING(st(true, "override_on", "2026-11-07T12:00:00-08:00").c_str(), stateAt(s, 1794031200, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(true, "override_on", "2026-11-07T12:00:00-08:00").c_str(), stateAt(s, 1794067199, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(true, "on", "2026-11-07T12:00:00-08:00").c_str(), stateAt(s, 1794067200, &ov).c_str());
+  TEST_ASSERT_FALSE(ov.active);  // dropped once its time came
+  TEST_ASSERT_EQUAL_STRING(st(false, "off", "2026-11-07T16:00:00-08:00").c_str(), stateAt(s, 1794081600, &ov).c_str());
+
+  // sleep at Fri 20:00 lasts to 21:00, when the schedule takes over and keeps it off.
+  ov = overrideFor(s, kLA, true, 1794024000, false);
+  TEST_ASSERT_EQUAL_STRING(st(false, "override_off", "2026-11-07T08:00:00-08:00").c_str(), stateAt(s, 1794024000, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(false, "off", "2026-11-07T08:00:00-08:00").c_str(), stateAt(s, 1794027600, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(true, "on", "2026-11-07T12:00:00-08:00").c_str(), stateAt(s, 1794067200, &ov).c_str());
+
+  // wake while already on: nothing to override.
+  TEST_ASSERT_FALSE(overrideFor(s, kLA, true, 1794024000, true).active);
+  TEST_ASSERT_FALSE(overrideFor(s, kLA, true, 1794031200, false).active);
+
+  // No schedule in force: sleep holds until a wake, however long.
+  Schedule off = s;
+  off.enabled = false;
+  ov = overrideFor(off, kLA, true, 1794024000, false);
+  TEST_ASSERT_TRUE(ov.active && ov.until < 0);
+  TEST_ASSERT_EQUAL_STRING(st(false, "override_off", nullptr).c_str(), stateAt(off, 1794024000 + 30 * 86400LL, &ov).c_str());
+  TEST_ASSERT_FALSE(overrideFor(off, kLA, true, 1794024000, true).active);
+  ov = overrideFor(s, kLA, false, 1794024000, false);  // no clock
+  TEST_ASSERT_EQUAL_STRING(st(false, "override_off", nullptr).c_str(), stateAt(s, 1794024000, &ov, false).c_str());
+}
+
+void test_schedule_daylight_saving_and_midnight() {
+  // Spring forward, Sunday 8 March 2026: 02:00 PST jumps to 03:00 PDT, so a range starting
+  // at 02:30 begins at the jump.
+  Override ov;
+  Schedule s = sched(week("[{\"start\": \"02:30\", \"end\": \"05:00\"}]"));
+  TEST_ASSERT_EQUAL_STRING(st(false, "off", "2026-03-08T03:00:00-07:00").c_str(), stateAt(s, 1772960400, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(true, "on", "2026-03-08T05:00:00-07:00").c_str(), stateAt(s, 1772964000, &ov).c_str());
+  // A range that lies wholly inside the skipped hour never happens.
+  s = sched(week("[{\"start\": \"02:10\", \"end\": \"02:50\"}]"));
+  TEST_ASSERT_EQUAL_STRING(st(false, "off", "2026-03-09T05:00:00-07:00").c_str(), stateAt(s, 1772960400, &ov).c_str());
+  // Fall back, Sunday 1 November 2026: 01:30 to 01:45 happens twice.
+  s = sched(week("[{\"start\": \"01:30\", \"end\": \"01:45\"}]"));
+  TEST_ASSERT_EQUAL_STRING(st(false, "off", "2026-11-01T01:30:00-07:00").c_str(), stateAt(s, 1793516400, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(true, "on", "2026-11-01T01:45:00-07:00").c_str(), stateAt(s, 1793516400 + 5400, &ov).c_str());
+  TEST_ASSERT_EQUAL_STRING(st(false, "off", "2026-11-01T01:30:00-08:00").c_str(), stateAt(s, 1793523000, &ov).c_str());
+  // A range to 24:00 and one from 00:00 the next day are one stretch: no change at midnight.
+  s = sched(week("[{\"start\": \"00:00\", \"end\": \"02:00\"}]", "[{\"start\": \"20:00\", \"end\": \"24:00\"}]"));
+  TEST_ASSERT_EQUAL_STRING(st(true, "on", "2026-11-08T02:00:00-08:00").c_str(), stateAt(s, 1794121200, &ov).c_str());
+}
+
+namespace {
+
+// The mock's next_flip: check every minute. Exact here because boundaries are whole local
+// minutes and the eight zones change offset on whole UTC hours.
+int64_t scanFlip(const Schedule& s, const char* posix, int64_t from, bool value) {
+  if (scheduledOn(s, posix, from) != value) return from;
+  for (int64_t t = (from >= 0 ? from / 60 : -((-from + 59) / 60)) * 60 + 60; t <= from + kScheduleHorizonS; t += 60) {
+    if (scheduledOn(s, posix, t) != value) return t;
+  }
+  return -1;
+}
+
+}  // namespace
+
+void test_next_flip_matches_a_minute_scan() {
+  // Random schedules, with boundaries drawn mostly from the hours daylight saving moves,
+  // started from instants around both 2026 switches and an ordinary week.
+  uint32_t seed = 12345;
+  auto rnd = [&seed](uint32_t n) {
+    seed = seed * 1103515245u + 12345u;
+    return (seed >> 8) % n;
+  };
+  const int16_t picks[] = {0, 60, 90, 105, 120, 135, 150, 179, 180, 181, 1439, 1440};
+  const int zones[] = {kLA, zoneIndex("America/New_York"), zoneIndex("America/Phoenix"), zoneIndex("UTC")};
+  const int64_t starts[] = {1772920800, 1772960400, 1772962200, 1772964000, 1793480400, 1793516400, 1793521800,
+                            1793523000, 1793527200, 1794024000};
+  int compared = 0;
+  for (int round = 0; round < 60; round++) {
+    Schedule s;
+    s.enabled = true;
+    for (DayWindows& d : s.days) {
+      d.count = static_cast<uint8_t>(rnd(3));
+      int16_t m[4];
+      for (int16_t& v : m) v = rnd(2) ? picks[rnd(12)] : static_cast<int16_t>(rnd(1441));
+      std::sort(m, m + 4);
+      d.start[0] = m[0], d.end[0] = m[1], d.start[1] = m[2], d.end[1] = m[3];
+      for (int k = 0; k < d.count; k++) {
+        if (d.end[k] <= d.start[k] || d.start[k] >= 1440) d.count = static_cast<uint8_t>(k);  // keep it valid
+      }
+    }
+    const int zone = zones[round % 4];
+    const char* posix = kZones[zone].posix;
+    for (const int64_t from : starts) {
+      const int64_t t = from + static_cast<int64_t>(rnd(7200)) - 3600;
+      for (const bool value : {scheduledOn(s, posix, t), !scheduledOn(s, posix, t)}) {
+        const int64_t want = scanFlip(s, posix, t, value), got = nextFlip(s, posix, t, value);
+        if (want != got) {
+          const std::string what = std::string(kZones[zone].iana) + " from " + std::to_string(t) + ": scan " +
+                                   std::to_string(want) + ", nextFlip " + std::to_string(got);
+          TEST_FAIL_MESSAGE(what.c_str());
+        }
+        compared++;
+      }
+    }
+  }
+  TEST_ASSERT_EQUAL(60 * 10 * 2, compared);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_sha256_vectors);
@@ -1024,6 +1498,13 @@ int main(int, char**) {
   RUN_TEST(test_settings_defaults_fill);
   RUN_TEST(test_instagram_settings);
   RUN_TEST(test_control);
+  RUN_TEST(test_schedule_validation);
+  RUN_TEST(test_power_setting);
+  RUN_TEST(test_local_iso_and_offset_changes);
+  RUN_TEST(test_schedule_states_through_a_week);
+  RUN_TEST(test_schedule_overrides);
+  RUN_TEST(test_schedule_daylight_saving_and_midnight);
+  RUN_TEST(test_next_flip_matches_a_minute_scan);
   RUN_TEST(test_upload_checks);
   RUN_TEST(test_storage_reserve);
   RUN_TEST(test_tile_paths);
@@ -1032,6 +1513,11 @@ int main(int, char**) {
   RUN_TEST(test_stamped_in_the_wall_zone);
   RUN_TEST(test_lower_or_same_keeps_dates_and_client_dates_are_ignored);
   RUN_TEST(test_no_stamp_without_valid_time);
+  RUN_TEST(test_previous_value_recorded_with_the_date);
+  RUN_TEST(test_client_previous_values_are_ignored);
+  RUN_TEST(test_new_prs_slide_type);
+  RUN_TEST(test_announcement_validation_matches_the_mock);
+  RUN_TEST(test_announcements_slide_type);
   RUN_TEST(test_recent_errors_keep_the_last_20);
   RUN_TEST(test_scrub_never_leaks_the_token);
   RUN_TEST(test_content_round_trip);

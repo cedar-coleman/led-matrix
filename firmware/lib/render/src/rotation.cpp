@@ -6,7 +6,10 @@ namespace wall {
 namespace render {
 
 bool sameScreen(const Screen& a, const Screen& b) {
-  return a.kind == b.kind && a.index == b.index && a.slide_id == b.slide_id && a.file == b.file;
+  if (a.kind != b.kind || a.slide_id != b.slide_id || a.file != b.file) return false;
+  if (a.kind == ScreenKind::kNewPrs) return a.athlete == b.athlete;
+  if (a.kind == ScreenKind::kAnnouncement) return a.announcement == b.announcement;
+  return a.index == b.index;
 }
 
 int findScreen(const std::vector<Screen>& seq, const Screen& s) {
@@ -16,7 +19,8 @@ int findScreen(const std::vector<Screen>& seq, const Screen& s) {
   return -1;
 }
 
-std::vector<Screen> sequence(const Content& c, int whiteboardPages) {
+std::vector<Screen> sequence(const Content& c, int whiteboardPages, const std::vector<PrEntry>& prs,
+                             const std::vector<const Announcement*>& anns) {
   std::vector<Screen> seq;
   const bool igActive = c.instagram.enabled;
   for (const Slide& s : c.slides) {
@@ -47,6 +51,26 @@ std::vector<Screen> sequence(const Content& c, int whiteboardPages) {
         Screen sc = base;
         sc.kind = ScreenKind::kPosts;
         sc.label = "Instagram posts";
+        seq.push_back(sc);
+      }
+    } else if (s.type == SlideType::kNewPrs) {
+      const int n = static_cast<int>(prs.size());
+      for (int i = 0; i < n; i++) {
+        Screen sc = base;
+        sc.kind = ScreenKind::kNewPrs;
+        sc.index = i;
+        sc.athlete = prs[i].athlete->id;
+        sc.label = "New PR: " + prs[i].athlete->name + ", " + std::to_string(i + 1) + " of " + std::to_string(n);
+        seq.push_back(sc);
+      }
+    } else if (s.type == SlideType::kAnnouncements) {
+      const int n = static_cast<int>(anns.size());
+      for (int i = 0; i < n; i++) {
+        Screen sc = base;
+        sc.kind = ScreenKind::kAnnouncement;
+        sc.index = i;
+        sc.announcement = anns[i]->id;
+        sc.label = "Announcement " + std::to_string(i + 1) + " of " + std::to_string(n);
         seq.push_back(sc);
       }
     } else {

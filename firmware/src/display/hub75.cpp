@@ -72,6 +72,12 @@ void setBrightnessPct(int pct) {
   panel->setBrightness8(static_cast<uint8_t>((pct * 255 + 50) / 100));
 }
 
+void blank() {
+  if (!panel) return;
+  panel->setBrightness8(0);
+  panel->clearScreen();
+}
+
 float refreshHz() { return panel ? static_cast<float>(panel->calculated_refresh_rate) : 0.0f; }
 
 }  // namespace hub75

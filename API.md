@@ -35,7 +35,7 @@ short, and never put a URL, token or PIN in it.
 
 | Status | `code` | When | Extra fields |
 | --- | --- | --- | --- |
-| 400 | `invalid` | Body not JSON, wrong shape, or a value out of range | |
+| 400 | `invalid` | Body not JSON, wrong shape, or a value out of range | `day`: for a schedule error about one day, that day's key (`"mon"` to `"sun"`, section 7.4) |
 | 400 | `not_configured` | Instagram job asked for before a token (and, for refresh, an account ID) is saved | |
 | 401 | `pin_required` | A write without an `X-Admin-Pin` header | |
 | 401 | `pin_wrong` | A write with a wrong PIN | |
@@ -61,6 +61,8 @@ Success codes: `200` for everything except the two Instagram jobs, which answer 
 | PUT | `/api/athletes` | PIN | 200 `{"rev", "athletes"}` |
 | GET | `/api/playlist` | open | 200 `{"rev", "slides"}` |
 | PUT | `/api/playlist` | PIN | 200 `{"rev", "slides"}` |
+| GET | `/api/announcements` | open | 200 `{"rev", "announcements"}` |
+| PUT | `/api/announcements` | PIN | 200 `{"rev", "announcements"}` |
 | GET | `/api/settings` | open | 200 public settings |
 | PUT | `/api/settings` | PIN (first PIN: see 4.2) | 200 public settings |
 | GET | `/api/instagram` | open | 200 public Instagram state |
@@ -165,7 +167,7 @@ Time for the lockout comes from a monotonic clock, never the wall clock. (The mo
 
 ## 5. Revisions on whole-list saves
 
-`athletes.json` and `playlist.json` each carry an integer `rev`.
+`athletes.json`, `playlist.json` and `announcements.json` each carry an integer `rev`.
 
 - `GET` returns the current `rev` with the list.
 - `PUT` must send that `rev` back. If `rev` is missing, not an integer, or not equal to the
@@ -189,7 +191,7 @@ Time for the lockout comes from a monotonic clock, never the wall clock. (The mo
 {"rev": 4, "athletes": [
   {"id": "a1", "name": "rytownusa", "visible": true,
    "snatch": 90, "clean_jerk": 112, "total": 200, "back_squat": 172, "front_squat": 137.5,
-   "notes": "", "pr_dates": {"snatch": "2026-11-06"}}
+   "notes": "", "pr_dates": {"snatch": "2026-11-06"}, "pr_prev": {"snatch": 87.5}}
 ]}
 ```
 
@@ -205,20 +207,81 @@ Request: `{"rev": <int>, "athletes": [<athlete>, ...]}`, at most 500 athletes, b
 | `snatch`, `clean_jerk`, `total`, `back_squat`, `front_squat` | `null`/absent, or a number (not a boolean) with `0 < v <= 500` and `v * 2` a whole number (0.5 kg steps) |
 | `notes` | String up to 200 characters; absent means `""` |
 | `visible` | Anything other than `false` is stored as `true` |
-| `pr_dates` | **Ignored.** The server sets it (below) |
+| `pr_dates`, `pr_prev` | **Ignored.** The server sets them (below) |
 
 Unknown fields are dropped. The response is the saved document, in the order sent.
 
-**PR dates are stamped by the server**, in the wall's time zone (section 9):
+**PR dates are stamped by the server**, in the wall's time zone (section 9), and each stamp
+records the value it replaced:
 
-- An athlete whose `id` is not in the stored list is new: `pr_dates` is `{}`.
-- For an athlete whose `id` is already stored, start from the stored `pr_dates`. For each lift,
-  if the new value is not `null` and either the stored value is `null` or the new value is
-  greater (numeric comparison), set that lift's date to today's local date.
-- Every other stored date is kept as it was, including for a lift that went down or was
-  cleared.
+- `pr_dates` maps a lift name to the `YYYY-MM-DD` of its last PR. `pr_prev` maps a lift name
+  to the value that PR replaced: a number, or `null` when the lift was blank before. A lift
+  missing from `pr_prev` has no recorded previous value (it was stamped before `pr_prev`
+  existed, or never). Both maps hold only the five lift names.
+- An athlete whose `id` is not in the stored list is new: `pr_dates` and `pr_prev` are `{}`.
+- For an athlete whose `id` is already stored, start from the stored `pr_dates` and
+  `pr_prev`. For each lift, if the new value is not `null` and either the stored value is
+  `null` or the new value is greater (numeric comparison), set that lift's date to today's
+  local date and its `pr_prev` to the stored value (`null` if it was blank).
+- Every other stored date and previous value is kept as it was, including for a lift that went
+  down or was cleared. A second PR on the same day records the value that one replaced.
 - If the clock is not valid (`time_valid` false, section 10), nothing is stamped; stored dates
-  are still kept.
+  and previous values are still kept.
+
+## 6a. Announcements
+
+Short messages from the coaches. Each one the wall shows gets a screen of its own (white
+text on the brand teal) from the `announcements` slide type (section 7.2).
+
+### `GET /api/announcements`
+
+```json
+{"rev": 3, "announcements": [
+  {"id": "n1", "text": "Welcome to The Strength Tank", "enabled": true, "start_date": null, "end_date": null},
+  {"id": "n2", "text": "Closed Thursday for Thanksgiving\nOpen gym Friday 8 to 12", "enabled": true,
+   "start_date": "2026-11-20", "end_date": "2026-11-27"}
+]}
+```
+
+### `PUT /api/announcements`
+
+Request: `{"rev": <int>, "announcements": [<announcement>, ...]}`, at most 50. The whole list
+is replaced, with the same `rev` rule as athletes (section 5) and the same PIN rules
+(section 4). Per announcement:
+
+| Field | Rule |
+| --- | --- |
+| `id` | String matching `^[A-Za-z0-9_-]{1,32}$`, unique in the list |
+| `text` | String; after trimming whitespace from both ends (Python's `str.strip()`), 1 to 200 characters (code points). `\n` is a line break on the wall, at most 6 of them. Stored trimmed. Any character is stored as sent, but the wall's font draws only printable ASCII (and the heart, U+2665); everything else shows as `?` |
+| `enabled` | Anything other than `false` is stored as `true` |
+| `start_date`, `end_date` | `null`, absent or `""` (stored as `null`), or a real calendar date written `YYYY-MM-DD` (no time, no trailing newline). `end_date` is the last day shown and must not be before `start_date` |
+
+Unknown fields are dropped. The response is the saved document, in the order sent, each
+announcement with exactly the five fields above.
+
+Errors, all `400 invalid`, in this order (the first one wins). `<n>` is the announcement's
+place in the list, from 1:
+
+| `error` | When |
+| --- | --- |
+| `Expected {"rev": n, "announcements": [...]}` | The body is not an object with an `announcements` list (before the `rev` check) |
+| `At most 50 announcements` | More than 50 |
+| `Announcement <n> is not an object` | |
+| `Announcement <n>: missing or duplicate id` | `id` missing, malformed or used twice |
+| `Announcement <n>: text must be 1 to 200 characters` | `text` missing, not a string, blank, or too long after trimming |
+| `Announcement <n>: at most 6 line breaks` | More than six `\n` after trimming |
+| `Announcement <n>: the start date must be YYYY-MM-DD or blank` | `start_date` set but not a real date in that form |
+| `Announcement <n>: the end date must be YYYY-MM-DD or blank` | The same for `end_date` |
+| `Announcement <n>: the end date is before the start date` | Both set and `end_date` < `start_date` |
+
+`tests/announcement_cases.json` lists cases and the answer for each; the mock's tests and
+the firmware's netcore tests both run them.
+
+**Which announcements show.** An announcement is showing today when it is enabled and,
+for each date it has, today (the wall's local date, section 9) is on or after `start_date`
+and on or before `end_date`. While the wall's clock is not valid, undated announcements
+still show and dated ones don't. `announcementScreens()` in `web/announceslides.js` is the
+rule.
 
 ## 7. Playlist and settings
 
@@ -238,18 +301,51 @@ Request: `{"rev": <int>, "slides": [...]}`, at most 100 slides.
 | Field | Rule |
 | --- | --- |
 | `id` | `^[A-Za-z0-9_-]{1,32}$`, unique |
-| `type` | `whiteboard`, `media`, `instagram_story` or `instagram_posts` |
-| `duration_s` | Integer (not boolean), 5 to 999. Per page for the whiteboard, per story for `instagram_story` |
+| `type` | `whiteboard`, `media`, `instagram_story`, `instagram_posts`, `new_prs` or `announcements` |
+| `duration_s` | Integer (not boolean), 5 to 999. Per page for the whiteboard, per story for `instagram_story`, per athlete for `new_prs`, per announcement for `announcements` |
 | `enabled` | Anything other than `false` is `true` |
 | `file` | `media` only: the name of a GIF on the board (else `400`). Dropped for other types |
 
+An unknown type is `400 invalid` with `Slide <n>: type must be one of whiteboard, media,
+instagram_story, instagram_posts, new_prs, announcements`.
+
+**What each type shows.** `whiteboard`: one screen per page. `instagram_story`: one per
+current story, `instagram_posts`: one while there are posts (both skipped while Instagram is
+off). `media`: the GIF. `new_prs`: one screen per athlete with a PR in the last
+`pr_highlight_days` days (section 7.3), as `recentPrs()` in `web/prslides.js` picks them:
+
+- An athlete counts when they are visible, their name isn't blank, and at least one lift has
+  a value and a `pr_dates` date `d` with `0 <= today - d < pr_highlight_days` days, where
+  `today` is the wall's local date (section 9). The whiteboard's green highlight uses the same
+  rule.
+- Athletes are ordered by their newest such date, newest first; athletes with the same date
+  keep their order in `athletes.json`. Only the first 20 get a screen in a pass.
+- Each screen shows up to three of the athlete's recent lifts, newest first, with the
+  increase over `pr_prev` when it is known.
+- The slide is skipped when no athlete counts, when `pr_highlight_days` is 0, and while the
+  wall's clock is not valid. The list is worked out again when the athletes or settings
+  change and when the wall's date changes.
+
+`announcements`: one screen per announcement showing today (section 6a), in list order.
+Only the first 20 get a screen in a pass. The slide is skipped when none is showing. The
+list is worked out again when the announcements change and when the wall's date changes
+(an announcement whose `end_date` was yesterday drops off at midnight). Each screen is
+`renderAnnouncement()` in `web/announceslides.js`: the text word-wrapped at spaces and at
+each `\n` (a word longer than a line is split), centred, at the largest of 3x, 2x or 1x
+font size that fits inside a 4 px margin (3x and 2x only without splitting a word), with
+a row of dots at the bottom when more than one is showing. Text that doesn't fit even at
+1x (nine lines) is cut and ends in `~`.
 ### 7.3 Settings
 
 `GET /api/settings`:
 
 ```json
 {"title": "THE STRENGTH TANK", "brightness": 50, "sort": "board", "pr_highlight_days": 7,
- "timezone": "America/Los_Angeles", "pin_set": true}
+ "timezone": "America/Los_Angeles",
+ "schedule": {"enabled": false, "days": {"mon": [{"start": "05:00", "end": "21:00"}], "tue": [...], "wed": [...],
+              "thu": [...], "fri": [...], "sat": [...], "sun": [...]}},
+ "power": {"supplies": 2, "rated_a": 18, "budget_pct": 85},
+ "pin_set": true}
 ```
 
 `PUT /api/settings` takes any subset of these keys; unknown keys are ignored. The response
@@ -263,7 +359,86 @@ is the same object as the `GET`, after the change. Checks stop at the first bad 
 | `sort` | `board`, `total` or `name` | `"board"` |
 | `pr_highlight_days` | Integer 0 to 60 (0 = off) | `7` |
 | `timezone` | One of the eight zones in section 9 | `"America/Los_Angeles"` |
+| `schedule` | When the display is on, the whole object (section 7.4) | enabled `false`, every day 05:00 to 21:00 |
+| `power` | The supplies the power limiter protects, the whole object (section 7.5) | `{"supplies": 2, "rated_a": 18, "budget_pct": 85}` |
 | `new_pin` | String of 6 to 12 digits; sets a new salt and hash. Write-only | |
+
+The keys are checked in the order of this table.
+
+### 7.4 Display schedule
+
+The gym sets, for each day of the week, when the wall is lit:
+
+```json
+{"enabled": true,
+ "days": {"mon": [{"start": "05:00", "end": "21:00"}],
+          "sat": [{"start": "08:00", "end": "12:00"}, {"start": "16:00", "end": "18:00"}],
+          "sun": [], "tue": [...], "wed": [...], "thu": [...], "fri": [...]}}
+```
+
+- `days` has all seven keys, `mon` to `sun`. Each is a list of 0 to 2 ranges; an empty list
+  is off all day.
+- Times are `HH:MM` (exactly five characters), 00:00 to 23:59, in the wall's time zone
+  (`timezone`, section 9). An `end` can also be `"24:00"`, the end of the day. A range
+  includes its start and stops at its end.
+- `end` must be after `start` on the same day. The two ranges of a day must not overlap;
+  they may touch (`12:00` to `14:00` and `14:00` to `16:00`).
+- The saved schedule is the one sent with its ranges sorted by `start` and unknown keys
+  dropped. A range ending at 24:00 followed by one starting at 00:00 the next day is one
+  stretch: the wall doesn't blink at midnight.
+
+Errors, all `400 invalid`, checked in this order (the first one wins). `<Day>` is the full
+English name (`Monday`) and the error carries `"day": "mon"`:
+
+| `error` | When |
+| --- | --- |
+| `Schedule must be an object with enabled and days` | `schedule` is not an object |
+| `Schedule enabled must be true or false` | `enabled` missing or not a boolean |
+| `Schedule days must list mon, tue, wed, thu, fri, sat and sun` | `days` not an object, or a day key missing |
+| `<Day>: give a list of 0 to 2 time ranges` | A day is not a list, or has more than two |
+| `<Day>: times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)` | A range is not an object, or a time is missing or malformed |
+| `<Day>: a time range must end after it starts` | `end` <= `start` |
+| `<Day>: the two time ranges overlap` | Sorted by start, the first ends after the second starts |
+
+**When the display is on.** While `enabled` is true and the wall's clock is valid
+(`time_valid`, section 10), the display is on inside a range and off outside every range.
+Off means the panels are black at brightness 0 and the render task idles (no GIF decoding,
+no frames); the web server, the Instagram fetcher and everything else keep running. When it
+comes back on, the rotation carries on from the screen and the time it had left. Daylight
+saving follows the zone's rules: a range that starts inside the hour skipped in spring
+starts at the jump (02:30 on that Sunday starts at 03:00), and in autumn a range in the
+repeated hour happens twice. Setup and error messages on the wall (section 12) show even
+while the display is off.
+
+**Fail open.** While the clock is not valid, the display stays on whatever the schedule says.
+
+**By hand.** `POST /api/control` with `"wake"` turns the display on now and `"sleep"` turns it
+off now (section 11). The override lasts until the next scheduled change, then the schedule
+takes over again: a wake at 22:00 when the wall is off until 05:00 lasts until 05:00, and
+the schedule then keeps the wall on. A wake while the schedule already has the wall on (or a
+sleep while it has it off) just clears any override. With no schedule in force (disabled, or
+no clock) only a sleep is kept, and it lasts until a wake. The same goes for a schedule
+that never changes (every day off, or on all day every day). Saving a schedule (any
+`PUT /api/settings` with `schedule`) clears the override; saving other settings does not.
+Overrides live in RAM: a restart goes back to the schedule.
+
+Status reports it as `display_on`, `schedule_state` and `next_change` (section 10).
+
+### 7.5 Power supplies
+
+`power` tells the power limiter what feeds the panels (`docs/power-wiring-guide.md`):
+
+| Key | Rule |
+| --- | --- |
+| `supplies` | Integer `1` or `2`. With 2, supply A feeds chain panels 1 to 6 and supply B panels 7 to 12, each against its own budget. With 1, all twelve panels count against one |
+| `rated_a` | Number (not boolean) from 5 to 100: each supply's rated current in amps |
+| `budget_pct` | Integer 50 to 95: the share of `rated_a` the wall loads a supply to continuously |
+
+A supply's budget is `rated_a * (budget_pct / 100)` amps (15.3 A by default). Unknown keys
+are dropped. Errors, all `400 invalid`, in this order: `Power must be an object with
+supplies, rated_a and budget_pct`, `Power supplies must be 1 or 2`, `Supply rating must be 5
+to 100 A`, `Power budget must be 50 to 95 percent`. For one Mean Well UHP-500-5 on its
+aluminium plate: `{"supplies": 1, "rated_a": 80, "budget_pct": 85}`.
 
 ## 8. Instagram
 
@@ -376,7 +551,9 @@ interrupted refresh).
 `YYYY-MM-DD`. Example: 03:30 UTC on 7 Nov 2026 is still 2026-11-06 in Los Angeles.
 
 The console highlights recent PRs using the wall's `local_date` from `/api/status`, not the
-phone's date. It falls back to the phone's date only while the wall's clock is not valid.
+phone's date. It falls back to the phone's date only while the wall's clock is not valid,
+except for `new_prs` screens and dated announcements: while `time_valid` is false the preview
+skips them, as the wall does.
 
 ## 10. Status
 
@@ -391,6 +568,9 @@ phone's date. It falls back to the phone's date only while the wall's clock is n
  "reset_reason": "poweron",
  "paused": false,
  "last_action": "next",
+ "display_on": true,
+ "schedule_state": "on",
+ "next_change": "2026-11-06T21:00:00-08:00",
  "now_playing": {"slide_id": "s1", "type": "whiteboard", "file": null},
  "storage": {"used_bytes": 1048576, "total_bytes": 24117248, "usable_bytes": 21705523},
  "wifi": {"ssid": "GymWiFi", "rssi": -58},
@@ -413,6 +593,9 @@ phone's date. It falls back to the phone's date only while the wall's clock is n
 | `uptime_s` | Whole seconds since boot |
 | `reset_reason` | Why the board last started: `poweron`, `external`, `software`, `panic`, `int_wdt`, `task_wdt`, `wdt`, `deepsleep`, `brownout`, `sdio` or `unknown` (ESP-IDF `esp_reset_reason()`) |
 | `paused`, `last_action` | From `POST /api/control`; `last_action` is `null` until the first one |
+| `display_on` | Whether the panels are lit now (section 7.4) |
+| `schedule_state` | `always_on` (schedule disabled), `on` or `off` (by the schedule), `override_on` or `override_off` (a wake or sleep in force), `no_clock` (schedule enabled but the clock isn't valid, so on) |
+| `next_change` | When `display_on` next changes, as the wall's local time with its offset (`YYYY-MM-DDTHH:MM:SS±HH:MM`, Python's `isoformat()`), looking up to 8 days ahead; `null` for `always_on`, `no_clock`, an override that lasts until the next wake, or a schedule with no change ahead |
 | `now_playing` | The slide on the wall now (also while paused): `{"slide_id", "type", "file"}`, `file` only for `media` (else `null`). `null` when no slide is enabled |
 | `storage` | Same object as in `GET /api/media` (section 11) |
 | `wifi` | Connected network name and signal in dBm |
@@ -459,17 +642,21 @@ index is updated.
 Response: `{"name": "logo.gif", "size": 91234, "peak_a": 6.42}`.
 
 **`peak_a` and slide brightness.** `peak_a` is the brightest frame's estimated current on the
-busier of the two supplies at 100% brightness, in amps, using `estimateSupplyAmps(rgba, 100)`
-from `web/power.js` on the frame `convert()` reports as `peakFrame`. For the whole slide the
-wall uses
+busier half of the wall (chain panels 1 to 6 or 7 to 12) at 100% brightness, in amps, using
+`estimateSupplyAmps(rgba, 100)` from `web/power.js` (the two-supply split, whatever `power`
+says) on the frame `convert()` reports as `peakFrame`. It keeps that meaning when the
+supplies change, so files uploaded before stay right. For the whole slide the wall uses
 
 ```
-slide brightness = min(brightness setting, floor(15.3 / peak_a * 100))
+budget = power.rated_a * (power.budget_pct / 100)          (15.3 A by default)
+load   = peak_a            with 2 supplies
+         2 * peak_a        with 1 supply (both halves; exact for all-white, cautious otherwise)
+slide brightness = min(brightness setting, floor(budget / load * 100))
 ```
 
-(`slideBrightness()` in `web/power.js`; 15.3 A is `SUPPLY_BUDGET_A`). With `peak_a` `null` or
-0 the slide plays at the setting. The per-frame limiter stays on as a backstop for any frame
-the estimate missed.
+(`slideBrightness(peakA, brightness, power)` in `web/power.js`). With `peak_a` `null` or 0 the
+slide plays at the setting. The per-frame limiter (`limitedBrightness`, which measures each
+frame against the real supplies) stays on as a backstop for any frame the estimate missed.
 
 ### `DELETE /api/media/{name}`
 
@@ -487,7 +674,10 @@ else deletes the file and its index entry: `200 {"ok": true}`.
 
 ### `POST /api/control`
 
-Body `{"action": "next" | "prev" | "pause" | "resume"}`. Anything else: `400 invalid`.
+Body `{"action": "next" | "prev" | "pause" | "resume" | "wake" | "sleep"}`. Anything else:
+`400 invalid` (`action must be next, prev, pause, resume, wake or sleep`). `wake` and `sleep`
+turn the display on or off now, until the next scheduled change (section 7.4); they don't
+touch `paused`. Every action sets `last_action`.
 
 ## 12. Device-only behaviour
 
@@ -523,8 +713,10 @@ These differ from the mock on purpose.
 - **Tiles for the renderer.** Next to each `ig/<gen>/<tile>.bmp` the device writes
   `ig/<gen>/<tile>.565`: the same tile as raw RGB565 little-endian, row-major, which is what
   the render task reads. `/ig/` serves only the `.bmp`.
-- **First start.** The mock seeds athletes from the chalkboard CSV and a logo slide; the
-  device starts from the section 13.3 defaults (no athletes, empty rotation).
+- **First start.** The mock seeds athletes from the chalkboard CSV, one announcement
+  ("Welcome to The Strength Tank") and a rotation (logo, whiteboard, New PRs,
+  announcements, Instagram story and posts); the device starts from the section 13.3
+  defaults (no athletes, no announcements, empty rotation).
 - **Request bodies.** A JSON body sent as `application/x-www-form-urlencoded` (what `curl -d`
   and Python's urllib send when no type is given) is parsed as form fields by the web server
   before the API sees it, so the device answers `400 invalid` "Send the body as JSON
@@ -544,6 +736,10 @@ These differ from the mock on purpose.
 - **Extra status fields.** `/api/status` also carries `free_psram` (bytes),
   `firmware: {"partition", "pending_verify", "max_bytes"}` (section 15), and in `wifi`, `ip`
   and `setup_ap`. `wifi.ssid` and `wifi.rssi` are `null` while not connected.
+- **When the schedule is applied.** The device works the schedule out every 15 seconds and
+  straight after a schedule save or a wake or sleep, so the display switches within 15 s of
+  a scheduled time (and within 15 s of the clock becoming valid). The mock works it out on
+  every `GET /api/status`. Both report the same `next_change`.
 - **Diagnostics.** The mock's `reset_reason`, `min_free_heap`, `refresh_hz`, `limiter_scale`
   and `wifi` are fixed placeholders, `time_valid` is `true` unless a test sets it, and
   `now_playing` is the first enabled slide.
@@ -560,6 +756,7 @@ never half of one.
 settings.json
 athletes.json
 playlist.json
+announcements.json
 instagram.json
 media_index.json
 media/<name>.gif
@@ -578,15 +775,24 @@ stories 54x96, posts 78x78, cover-cropped from the decoded JPEG.
 ```json
 {"title": "THE STRENGTH TANK", "brightness": 50, "sort": "board", "pr_highlight_days": 7,
  "timezone": "America/Los_Angeles",
+ "schedule": {"enabled": false, "days": {"mon": [{"start": "05:00", "end": "21:00"}], ...}},
+ "power": {"supplies": 2, "rated_a": 18, "budget_pct": 85},
  "pin_salt": "32 hex chars", "pin_hash": "64 hex chars", "pin_iter": 10000}
 ```
 
 Missing keys take the defaults in section 7.3; with no PIN the three `pin_` keys are `null`.
+A stored `schedule` or `power` that the API would refuse (a file edited by hand) is read as
+no schedule (the display stays on) or as the default supplies.
 
 `athletes.json`: `{"rev": int, "athletes": [ ... ]}`, each athlete exactly as returned in
-section 6, with `pr_dates` a map from lift name to `YYYY-MM-DD`.
+section 6, with `pr_dates` a map from lift name to `YYYY-MM-DD` and `pr_prev` a map from lift
+name to a number or `null`. A file written before `pr_prev` existed has no `pr_prev`; it reads
+as `{}`.
 
 `playlist.json`: `{"rev": int, "slides": [ ... ]}`, as in section 7.
+
+`announcements.json`: `{"rev": int, "announcements": [ ... ]}`, each announcement exactly as
+returned in section 6a.
 
 `instagram.json`: the object in section 8.1 without `token_set`, `busy`, `accounts` and
 `accounts_error` (those live in RAM), plus `"access_token": string`. On the device the token
@@ -609,6 +815,7 @@ On every start, before serving:
      PIN reset)
    - athletes: `{"rev": 1, "athletes": []}`
    - playlist: `{"rev": 1, "slides": []}`
+   - announcements: `{"rev": 1, "announcements": []}`
    - instagram: enabled, empty token and account, `refresh_minutes: 15`, no stories or posts
    - media_index: rebuilt from the GIFs in `media/`, with `frames` and `peak_a` `null` and
      `uploaded` from the file's modification date
@@ -625,11 +832,15 @@ The same recovery applies if a file is found corrupt while running.
 | Athletes | 500 |
 | Slides | 100 |
 | Screen time | 5 to 999 s, whole seconds |
+| New PRs screens | 20 athletes per pass |
+| Announcements | 50, each 1 to 200 characters with at most 6 line breaks; 20 screens per pass |
 | Weights | 0.5 to 500 kg in 0.5 kg steps, or blank |
 | Name / notes / title | 40 / 200 / 32 characters |
 | Media file name | 52 characters including `.gif` |
 | PIN | 6 to 12 digits |
 | `peak_a` | 0 to 40 A |
+| Schedule | 0 to 2 time ranges a day, minute steps |
+| Power supplies | 1 or 2, 5 to 100 A each, budget 50 to 95% |
 | Storage | 23 MB total, 90% usable |
 | Instagram | 5 stories, 2 posts, one job at a time, refresh every 5 to 1440 min |
 | `recent_errors` | Last 20 |

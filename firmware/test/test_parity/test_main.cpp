@@ -1,5 +1,5 @@
-// Pixel parity: lib/render must draw exactly what web/layout.js, web/igslides.js and
-// web/power.js draw. The expected bytes come from test/parity/gen_golden.mjs, which runs
+// Pixel parity: lib/render must draw exactly what web/layout.js, web/igslides.js,
+// web/prslides.js, web/announceslides.js and web/power.js draw. The expected bytes come from test/parity/gen_golden.mjs, which runs
 // the JS on the same inputs; regenerate them after changing anything in web/.
 #include <ArduinoJson.h>
 #include <stdio.h>
@@ -13,10 +13,12 @@
 #include <string>
 #include <vector>
 
+#include "announceslides.h"
 #include "font5x7.h"
 #include "igslides.h"
 #include "layout.h"
 #include "power.h"
+#include "prslides.h"
 #include "surface.h"
 
 using namespace wall;
@@ -125,6 +127,9 @@ std::vector<Athlete> athletesFrom(JsonArrayConst list) {
       a.kg[k] = a.has[k] ? v.as<float>() : 0;
       JsonVariantConst d = j["pr_dates"][kLiftKeys[k]];
       a.pr_date[k] = d.isNull() ? "" : d.as<const char*>();
+      JsonVariantConst p = j["pr_prev"][kLiftKeys[k]];
+      a.has_prev[k] = p.is<float>();  // null and absent are both "unknown"
+      a.prev_kg[k] = a.has_prev[k] ? p.as<float>() : 0;
     }
     out.push_back(a);
   }
@@ -161,6 +166,8 @@ void test_constants_and_font() {
   TEST_ASSERT_EQUAL(kMaxRows, c["MAX_ROWS"].as<int>());
   TEST_ASSERT_EQUAL(kMinSeconds, c["MIN_SECONDS"].as<int>());
   TEST_ASSERT_EQUAL(kMaxSeconds, c["MAX_SECONDS"].as<int>());
+  TEST_ASSERT_EQUAL(MAX_PR_SCREENS, c["MAX_PR_SCREENS"].as<int>());
+  TEST_ASSERT_EQUAL(MAX_ANNOUNCE_SCREENS, c["MAX_ANNOUNCE_SCREENS"].as<int>());
   TEST_ASSERT_TRUE(PANEL_FULL_WHITE_A == fromBits(c["PANEL_FULL_WHITE_A"]));
   TEST_ASSERT_TRUE(SUPPLY_RATED_A == fromBits(c["SUPPLY_RATED_A"]));
   TEST_ASSERT_TRUE(SUPPLY_BUDGET_A == fromBits(c["SUPPLY_BUDGET_A"]));
@@ -280,6 +287,88 @@ void test_posts_parity() {
   }
 }
 
+void test_prs_parity() {
+  auto buf = frameBuffer();
+  Surface s(buf.get());
+  int cases = 0;
+  for (JsonObjectConst c : manifest["prs"].as<JsonArrayConst>()) {
+    const std::string m = std::string("new PRs ") + c["name"].as<const char*>();
+    const std::vector<Athlete> athletes = athletesFrom(c["athletes"]);
+    const std::string today = c["today"].as<const char*>();
+    const std::vector<PrEntry> list = recentPrs(athletes, c["days"].as<int>(), today);
+
+    // Who is celebrated, in which order, with which lifts.
+    JsonArrayConst want = c["list"];
+    TEST_ASSERT_EQUAL_MESSAGE(want.size(), list.size(), (m + " list size").c_str());
+    for (size_t i = 0; i < list.size(); i++) {
+      JsonObjectConst w = want[i];
+      TEST_ASSERT_EQUAL_STRING_MESSAGE(w["id"].as<const char*>(), list[i].athlete->id.c_str(), (m + " order").c_str());
+      TEST_ASSERT_EQUAL_STRING_MESSAGE(w["newest"].as<const char*>(), list[i].newest.c_str(), (m + " newest").c_str());
+      JsonArrayConst lifts = w["lifts"];
+      TEST_ASSERT_EQUAL_MESSAGE(lifts.size(), list[i].lifts.size(), (m + " lift count").c_str());
+      for (size_t k = 0; k < lifts.size(); k++) {
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(lifts[k]["lift"].as<const char*>(), kLiftKeys[list[i].lifts[k].lift], (m + " lift order").c_str());
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(lifts[k]["date"].as<const char*>(), list[i].lifts[k].date.c_str(), (m + " lift date").c_str());
+      }
+    }
+
+    for (JsonObjectConst f : c["frames"].as<JsonArrayConst>()) {
+      const int entry = f["entry"].as<int>(), index = f["index"].as<int>(), count = f["count"].as<int>();
+      renderPrSlide(s, list[entry], index, count, today);
+      expectFrame(m + " entry " + std::to_string(entry) + " dot " + std::to_string(index) + "/" + std::to_string(count),
+                  f["frame"], buf.get());
+    }
+    cases++;
+  }
+  TEST_ASSERT_TRUE_MESSAGE(cases >= 15, "the fixtures have the New PRs cases");
+}
+
+void test_announce_parity() {
+  auto buf = frameBuffer();
+  Surface s(buf.get());
+  int cases = 0;
+  for (JsonObjectConst c : manifest["announce"].as<JsonArrayConst>()) {
+    const std::string m = std::string("announcement ") + c["name"].as<const char*>();
+    const std::string text = c["text"].as<const char*>();
+    const int index = c["index"].as<int>(), count = c["count"].as<int>();
+    // The fit first, so a mismatch says whether the scale, the wrapping or the drawing is off.
+    const AnnounceFit fit = fitAnnouncement(fromUtf8(text), count);
+    TEST_ASSERT_EQUAL_MESSAGE(c["scale"].as<int>(), fit.scale, (m + " scale").c_str());
+    TEST_ASSERT_EQUAL_MESSAGE(c["cut"].as<bool>(), fit.cut, (m + " cut").c_str());
+    JsonArrayConst lines = c["lines"];
+    TEST_ASSERT_EQUAL_MESSAGE(lines.size(), fit.lines.size(), (m + " line count").c_str());
+    for (size_t i = 0; i < lines.size(); i++) {
+      TEST_ASSERT_EQUAL_STRING_MESSAGE(lines[i].as<const char*>(), toUtf8(fit.lines[i]).c_str(), (m + " line").c_str());
+    }
+    renderAnnouncement(s, text, index, count);
+    expectFrame(m, c["frame"], buf.get());
+    cases++;
+  }
+  TEST_ASSERT_TRUE_MESSAGE(cases >= 23, "the fixtures have the announcement cases");
+
+  int lists = 0;
+  for (JsonObjectConst c : manifest["announceActive"].as<JsonArrayConst>()) {
+    Content content;
+    for (JsonObjectConst j : c["list"].as<JsonArrayConst>()) {
+      Announcement a;
+      a.id = j["id"].as<const char*>();
+      a.text = j["text"].as<const char*>();
+      a.enabled = j["enabled"].as<bool>();
+      a.start_date = j["start_date"].isNull() ? "" : j["start_date"].as<const char*>();
+      a.end_date = j["end_date"].isNull() ? "" : j["end_date"].as<const char*>();
+      content.announcements.push_back(a);
+    }
+    const std::string today = c["today"].as<const char*>();
+    const std::vector<const Announcement*> got = announcementScreens(content, today);
+    std::string want, have;
+    for (JsonVariantConst id : c["ids"].as<JsonArrayConst>()) want += std::string(id.as<const char*>()) + " ";
+    for (const Announcement* a : got) have += a->id + " ";
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(want.c_str(), have.c_str(), ("showing on '" + today + "'").c_str());
+    lists++;
+  }
+  TEST_ASSERT_EQUAL(12, lists);
+}
+
 void test_power_parity() {
   for (JsonObjectConst c : manifest["power"].as<JsonArrayConst>()) {
     const std::string name = std::string("power ") + c["name"].as<const char*>();
@@ -308,6 +397,46 @@ void test_power_parity() {
   }
 }
 
+// settings.power: one supply, other ratings, and the default written out.
+void test_power_config_parity() {
+  int checked = 0;
+  for (JsonObjectConst cfgJson : manifest["powerConfigs"].as<JsonArrayConst>()) {
+    PowerSupplies cfg;
+    cfg.supplies = cfgJson["supplies"].as<uint8_t>();
+    cfg.rated_a = fromBits(cfgJson["rated_a"]);
+    cfg.budget_pct = cfgJson["budget_pct"].as<uint8_t>();
+    const std::string tag = std::to_string(cfg.supplies) + "x" + std::to_string(cfg.rated_a) + "A@" +
+                            std::to_string(cfg.budget_pct) + "% ";
+    TEST_ASSERT_TRUE_MESSAGE(supplyBudgetA(cfg) == fromBits(cfgJson["budget"]), (tag + "budget").c_str());
+    for (JsonObjectConst c : cfgJson["frames"].as<JsonArrayConst>()) {
+      const std::string name = tag + c["name"].as<const char*>();
+      const std::vector<uint8_t> rgb = loadFrame(c["frame"]);
+      TEST_ASSERT_EQUAL(kFrameBytes, rgb.size());
+      for (JsonObjectConst e : c["estimates"].as<JsonArrayConst>()) {
+        const SupplyAmps amps = estimateSupplyAmps(rgb.data(), fromBits(e["pct"]), cfg);
+        TEST_ASSERT_TRUE_MESSAGE(amps.a == fromBits(e["a"]), (name + " supply A").c_str());
+        TEST_ASSERT_TRUE_MESSAGE(amps.b == fromBits(e["b"]), (name + " supply B").c_str());
+      }
+      for (JsonObjectConst l : c["limited"].as<JsonArrayConst>()) {
+        TEST_ASSERT_EQUAL_MESSAGE(l["value"].as<int>(), limitedBrightness(rgb.data(), l["pct"].as<int>(), cfg),
+                                  (name + " limitedBrightness").c_str());
+      }
+      const SupplyAmps full = estimateSupplyAmps(rgb.data(), 100);  // peak_a: the two-supply split, always
+      const double peak = full.a > full.b ? full.a : full.b;
+      for (JsonObjectConst sb : c["slide"].as<JsonArrayConst>()) {
+        TEST_ASSERT_EQUAL_MESSAGE(sb["value"].as<int>(), slideBrightness(peak, sb["pct"].as<int>(), cfg),
+                                  (name + " slideBrightness").c_str());
+      }
+      checked++;
+    }
+    for (JsonObjectConst sb : cfgJson["slideOnly"].as<JsonArrayConst>()) {
+      TEST_ASSERT_EQUAL_MESSAGE(sb["value"].as<int>(), slideBrightness(fromBits(sb["peak"]), sb["pct"].as<int>(), cfg),
+                                (tag + "slideBrightness").c_str());
+    }
+  }
+  TEST_ASSERT_EQUAL(6 * 7, checked);
+}
+
 int main() {
   if (!loadManifest()) {
     printf("No parity fixtures: run `node test/parity/gen_golden.mjs` from firmware/ first.\n");
@@ -320,7 +449,10 @@ int main() {
   RUN_TEST(test_whiteboard_parity);
   RUN_TEST(test_story_parity);
   RUN_TEST(test_posts_parity);
+  RUN_TEST(test_prs_parity);
+  RUN_TEST(test_announce_parity);
   RUN_TEST(test_power_parity);
+  RUN_TEST(test_power_config_parity);
   printf("parity: %d frames compared byte for byte\n", framesCompared);
   return UNITY_END();
 }

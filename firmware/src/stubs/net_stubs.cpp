@@ -1,10 +1,11 @@
 // Stand-in for the network half, used by the display_dev environment only.
 //
 // Makes display_dev useful on the real wall with no Wi-Fi: it publishes the chalkboard
-// athletes (athletes-from-chalkboard.csv, compiled in) on a whiteboard slide, plus one
-// media slide for each GIF already in LittleFS /media, and a fixed clock so recent PRs
-// show green. Serial commands step the rotation: n = next, p = previous, space = pause or
-// resume, b = cycle brightness.
+// athletes (athletes-from-chalkboard.csv, compiled in) on a whiteboard slide, a New PRs
+// slide and an announcements slide with three sample announcements (one dated, so the fixed
+// date matters), plus one media slide for each GIF already in LittleFS /media, and a fixed clock
+// so recent PRs show green. Serial commands step the rotation: n = next, p = previous, space = pause or
+// resume, b = cycle brightness, o = display off or on (what the schedule does).
 #include <Arduino.h>
 #include <LittleFS.h>
 
@@ -60,15 +61,18 @@ const Row kChalkboard[] = {
 };
 
 // A few PRs inside the 7-day window, and one just outside it, so green shows up on
-// several pages and the boundary can be checked by eye.
+// several pages and the boundary can be checked by eye. The New PRs screens get a mix of
+// increases (one of 0.5 kg steps) and one with no previous value.
 struct Pr {
   int row;
   Lift lift;
   const char* date;
+  float prev;  // < 0: unknown, no "+"
 };
 const Pr kPrs[] = {
-    {0, kSnatch, "2026-11-06"}, {5, kTotal, "2026-11-04"}, {7, kBackSquat, "2026-11-01"},
-    {12, kCleanJerk, "2026-10-31"}, {19, kFrontSquat, "2026-11-05"}, {28, kSnatch, "2026-10-30"},  // 7 days: not green
+    {0, kSnatch, "2026-11-06", 87.5},  {5, kTotal, "2026-11-04", 247},     {5, kCleanJerk, "2026-11-04", 137.5},
+    {7, kBackSquat, "2026-11-01", -1}, {12, kCleanJerk, "2026-10-31", 92}, {19, kFrontSquat, "2026-11-05", 100},
+    {28, kSnatch, "2026-10-30", 120},  // 7 days: not green, no New PRs screen
 };
 
 std::shared_ptr<Content> demoContent() {
@@ -85,13 +89,52 @@ std::shared_ptr<Content> demoContent() {
     }
     c->athletes.push_back(a);
   }
-  for (const Pr& p : kPrs) c->athletes[p.row].pr_date[p.lift] = p.date;
+  for (const Pr& p : kPrs) {
+    Athlete& a = c->athletes[p.row];
+    a.pr_date[p.lift] = p.date;
+    a.has_prev[p.lift] = p.prev >= 0;
+    a.prev_kg[p.lift] = a.has_prev[p.lift] ? p.prev : 0;
+  }
 
   Slide wb;
   wb.id = "whiteboard";
   wb.type = SlideType::kWhiteboard;
   wb.duration_s = 8;
   c->slides.push_back(wb);
+
+  Slide prs;
+  prs.id = "new-prs";
+  prs.type = SlideType::kNewPrs;
+  prs.duration_s = 8;
+  c->slides.push_back(prs);
+
+  // Short, two-line and long, so each font size shows. The third is dated around the fake
+  // date; the fourth ended before it and must not show.
+  const struct {
+    const char* text;
+    const char* start;
+    const char* end;
+  } kNotes[] = {
+      {"Welcome to The Strength Tank", "", ""},
+      {"OPEN GYM\nSaturday 8 to 12", "", ""},
+      {"Bring a friend week! Every member can bring one guest to any class from Monday to Saturday. "
+       "Sign them in at the desk first.",
+       "2026-11-02", "2026-11-08"},
+      {"Closed for Halloween", "2026-10-31", "2026-10-31"},
+  };
+  for (const auto& n : kNotes) {
+    Announcement a;
+    a.id = "n" + std::to_string(c->announcements.size() + 1);
+    a.text = n.text;
+    a.start_date = n.start;
+    a.end_date = n.end;
+    c->announcements.push_back(a);
+  }
+  Slide ann;
+  ann.id = "announcements";
+  ann.type = SlideType::kAnnouncements;
+  ann.duration_s = 8;
+  c->slides.push_back(ann);
 
   // Whatever GIFs are already on the board (uploaded by the full firmware earlier).
   File dir = LittleFS.open(kMediaDir);
@@ -116,11 +159,15 @@ std::shared_ptr<Content> demoContent() {
 void net_begin() {
   if (!LittleFS.begin(false)) Serial.println("LittleFS did not mount; showing the whiteboard only");
   content_publish(demoContent());
-  Serial.println("display_dev: n = next, p = previous, space = pause/resume, b = brightness, s = status");
+  Serial.println("display_dev: n = next, p = previous, space = pause/resume, b = brightness, o = off/on, s = status");
 }
 
 void net_loop() {
+#ifdef WALL_CALIBRATE
+  return;  // the calibration screen reads the serial keys itself
+#endif
   static bool paused = false;
+  static bool on = true;
   static uint8_t brightness = 50;
   while (Serial.available()) {
     switch (Serial.read()) {
@@ -143,6 +190,11 @@ void net_loop() {
         Serial.printf("brightness %u%% from the next screen\n", brightness);
         break;
       }
+      case 'o':
+        on = !on;
+        display_set_power(on);
+        Serial.printf("display %s\n", on ? "on" : "off (black, render task idle)");
+        break;
       case 's': {
         const RenderStatus s = render_status();
         Serial.printf("%s%s | refresh %.0f Hz | limiter %.2f | %u frames\n", s.now_playing.c_str(),

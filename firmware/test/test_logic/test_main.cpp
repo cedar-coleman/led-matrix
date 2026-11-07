@@ -8,10 +8,13 @@
 #include <string>
 #include <vector>
 
+#include "announceslides.h"
 #include "igslides.h"
 #include "jsport.h"
 #include "layout.h"
 #include "panel_map.h"
+#include "power_gate.h"
+#include "prslides.h"
 #include "rotation.h"
 #include "screens.h"
 
@@ -115,6 +118,215 @@ void test_find_screen_across_publishes() {
   TEST_ASSERT_EQUAL(6, findScreen(after, before[8]));  // the media slide moved up
 }
 
+Athlete lifter(const std::string& id, const std::string& name, Lift lift, float kg, const char* date) {
+  Athlete a;
+  a.id = id;
+  a.name = name;
+  a.has[lift] = true;
+  a.kg[lift] = kg;
+  a.pr_date[lift] = date;
+  return a;
+}
+
+Content prContent() {
+  Content c;
+  c.settings.pr_highlight_days = 7;
+  c.athletes = {
+      lifter("a", "Ann", kSnatch, 80, "2026-11-03"),  lifter("b", "Bo", kTotal, 200, "2026-10-30"),  // 7 days: out
+      lifter("c", "Cy", kCleanJerk, 100, "2026-11-06"), lifter("d", "Di", kSnatch, 70, "2026-11-06"),
+      lifter("e", "Ed", kBackSquat, 150, "2026-11-05"),
+  };
+  c.athletes[3].visible = false;  // hidden: no screen
+  Slide wb;
+  wb.id = "wb";
+  Slide prs;
+  prs.id = "prs";
+  prs.type = SlideType::kNewPrs;
+  prs.duration_s = 6;
+  Slide off = prs;
+  off.id = "prs-off";
+  off.enabled = false;
+  Slide tooShort = prs;
+  tooShort.id = "prs-short";
+  tooShort.duration_s = 4;
+  c.slides = {wb, prs, off, tooShort};
+  return c;
+}
+
+void test_sequence_new_prs_one_screen_per_athlete() {
+  Content c = prContent();
+  const std::vector<PrEntry> prs = prScreens(c, "2026-11-06");
+  const std::vector<Screen> seq = sequence(c, 2, prs);
+  TEST_ASSERT_EQUAL(2 + 3, seq.size());
+  const char* const ids[] = {"c", "e", "a"};  // newest PR first
+  for (int i = 0; i < 3; i++) {
+    const Screen& sc = seq[2 + i];
+    TEST_ASSERT_TRUE(sc.kind == ScreenKind::kNewPrs);
+    TEST_ASSERT_EQUAL(i, sc.index);
+    TEST_ASSERT_EQUAL_STRING(ids[i], sc.athlete.c_str());
+    TEST_ASSERT_EQUAL(6, sc.seconds);  // per athlete
+    TEST_ASSERT_EQUAL_STRING("prs", sc.slide_id.c_str());
+  }
+  TEST_ASSERT_EQUAL_STRING("New PR: Cy, 1 of 3", seq[2].label.c_str());
+  TEST_ASSERT_EQUAL_STRING("New PR: Ann, 3 of 3", seq[4].label.c_str());
+  TEST_ASSERT_EQUAL(2, sequence(c, 2).size());  // no list given: nothing to show
+
+  // Skipped: highlighting off, no clock, nobody in the window.
+  c.settings.pr_highlight_days = 0;
+  TEST_ASSERT_EQUAL(2, sequence(c, 2, prScreens(c, "2026-11-06")).size());
+  c.settings.pr_highlight_days = 7;
+  TEST_ASSERT_EQUAL(2, sequence(c, 2, prScreens(c, "")).size());
+  TEST_ASSERT_EQUAL(2, sequence(c, 2, prScreens(c, "not a date")).size());
+  TEST_ASSERT_EQUAL(2, sequence(c, 2, prScreens(c, "2026-12-25")).size());
+  // A longer window takes in Bo.
+  c.settings.pr_highlight_days = 8;
+  TEST_ASSERT_EQUAL(2 + 4, sequence(c, 2, prScreens(c, "2026-11-06")).size());
+}
+
+void test_new_prs_capped_per_pass() {
+  Content c = prContent();
+  c.athletes.clear();
+  for (int i = 0; i < 25; i++) {
+    // Five days of PRs, five athletes a day; later athletes have older PRs.
+    const std::string date = "2026-11-0" + std::to_string(6 - i / 5);
+    c.athletes.push_back(lifter("x" + std::to_string(i), "lifter" + std::to_string(i), kTotal, 100 + i, date.c_str()));
+  }
+  TEST_ASSERT_EQUAL(25, recentPrs(c.athletes, 7, "2026-11-06").size());
+  const std::vector<PrEntry> prs = prScreens(c, "2026-11-06");
+  TEST_ASSERT_EQUAL(MAX_PR_SCREENS, prs.size());
+  const std::vector<Screen> seq = sequence(c, 1, prs);
+  TEST_ASSERT_EQUAL(1 + 20, seq.size());
+  TEST_ASSERT_EQUAL_STRING("New PR: lifter0, 1 of 20", seq[1].label.c_str());
+  TEST_ASSERT_EQUAL_STRING("New PR: lifter19, 20 of 20", seq[20].label.c_str());  // the oldest five wait
+}
+
+void test_new_prs_screen_follows_its_athlete() {
+  Content c = prContent();
+  const std::vector<PrEntry> beforePrs = prScreens(c, "2026-11-06");
+  const std::vector<Screen> before = sequence(c, 2, beforePrs);
+  // Ann (3rd) is on screen; then Bo sets a PR today and takes the top of the list.
+  c.athletes[1].pr_date[kTotal] = "2026-11-06";
+  const std::vector<PrEntry> afterPrs = prScreens(c, "2026-11-06");
+  const std::vector<Screen> after = sequence(c, 2, afterPrs);
+  TEST_ASSERT_EQUAL(2 + 4, after.size());
+  TEST_ASSERT_EQUAL(5, findScreen(after, before[4]));  // still Ann, one place later
+  TEST_ASSERT_EQUAL(3, after[5].index);
+  // The day moves on and Ann's PR leaves the window: her screen is gone.
+  const std::vector<PrEntry> laterPrs = prScreens(c, "2026-11-10");
+  const std::vector<Screen> later = sequence(c, 2, laterPrs);
+  TEST_ASSERT_EQUAL(-1, findScreen(later, before[4]));
+  TEST_ASSERT_EQUAL(3, findScreen(later, before[2]));  // Cy (today) is still there
+}
+
+Announcement note(const std::string& id, const char* start = "", const char* end = "", bool enabled = true) {
+  Announcement a;
+  a.id = id;
+  a.text = "Note " + id;
+  a.start_date = start;
+  a.end_date = end;
+  a.enabled = enabled;
+  return a;
+}
+
+Content announceContent() {
+  Content c;
+  c.announcements = {
+      note("undated"),
+      note("off", "", "", false),
+      note("from_7th", "2026-11-07"),
+      note("to_6th", "", "2026-11-06"),
+      note("to_5th", "", "2026-11-05"),
+      note("only_6th", "2026-11-06", "2026-11-06"),
+      note("week", "2026-11-06", "2026-11-13"),
+  };
+  Slide wb;
+  wb.id = "wb";
+  Slide ann;
+  ann.id = "ann";
+  ann.type = SlideType::kAnnouncements;
+  ann.duration_s = 7;
+  Slide off = ann;
+  off.id = "ann-off";
+  off.enabled = false;
+  Slide tooShort = ann;
+  tooShort.id = "ann-short";
+  tooShort.duration_s = 4;
+  c.slides = {wb, ann, off, tooShort};
+  return c;
+}
+
+std::string ids(const std::vector<Screen>& seq) {
+  std::string out;
+  for (const Screen& sc : seq) {
+    if (sc.kind == ScreenKind::kAnnouncement) out += sc.announcement + " ";
+  }
+  return out;
+}
+
+void test_sequence_announcements_one_screen_per_showing() {
+  Content c = announceContent();
+  const std::vector<Screen> seq = sequence(c, 1, {}, announcementScreens(c, "2026-11-06"));
+  TEST_ASSERT_EQUAL(1 + 4, seq.size());
+  TEST_ASSERT_EQUAL_STRING("undated to_6th only_6th week ", ids(seq).c_str());  // list order
+  for (int i = 0; i < 4; i++) {
+    const Screen& sc = seq[1 + i];
+    TEST_ASSERT_TRUE(sc.kind == ScreenKind::kAnnouncement);
+    TEST_ASSERT_EQUAL(i, sc.index);
+    TEST_ASSERT_EQUAL(7, sc.seconds);  // per announcement
+    TEST_ASSERT_EQUAL_STRING("ann", sc.slide_id.c_str());
+  }
+  TEST_ASSERT_EQUAL_STRING("Announcement 1 of 4", seq[1].label.c_str());
+  TEST_ASSERT_EQUAL_STRING("Announcement 4 of 4", seq[4].label.c_str());
+  TEST_ASSERT_EQUAL(1, sequence(c, 1).size());  // no list given: nothing to show
+}
+
+void test_announcement_date_edges() {
+  Content c = announceContent();
+  const auto showing = [&](const char* today) { return ids(sequence(c, 1, {}, announcementScreens(c, today))); };
+  // The day before: to_5th's last day; nothing that starts on the 6th yet.
+  TEST_ASSERT_EQUAL_STRING("undated to_6th to_5th ", showing("2026-11-05").c_str());
+  // The day after: to_6th and only_6th have ended; from_7th starts.
+  TEST_ASSERT_EQUAL_STRING("undated from_7th week ", showing("2026-11-07").c_str());
+  // The last day of a range is included, the day after is not.
+  TEST_ASSERT_EQUAL_STRING("undated from_7th week ", showing("2026-11-13").c_str());
+  TEST_ASSERT_EQUAL_STRING("undated from_7th ", showing("2026-11-14").c_str());
+  // Across a year end.
+  c.announcements.push_back(note("new_year", "2026-12-31", "2027-01-01"));
+  TEST_ASSERT_EQUAL_STRING("undated from_7th new_year ", showing("2027-01-01").c_str());
+  TEST_ASSERT_EQUAL_STRING("undated from_7th ", showing("2027-01-02").c_str());
+  // No clock: undated ones still show, dated ones don't.
+  TEST_ASSERT_EQUAL_STRING("undated ", showing("").c_str());
+  TEST_ASSERT_EQUAL_STRING("undated ", showing("not a date").c_str());
+  // Nothing showing: the slide is skipped.
+  c.announcements[0].enabled = false;
+  TEST_ASSERT_EQUAL(1, sequence(c, 1, {}, announcementScreens(c, "")).size());
+}
+
+void test_announcements_capped_and_followed() {
+  Content c = announceContent();
+  c.announcements.clear();
+  for (int i = 0; i < 25; i++) c.announcements.push_back(note("n" + std::to_string(i)));
+  std::vector<const Announcement*> anns = announcementScreens(c, "2026-11-06");
+  TEST_ASSERT_EQUAL(MAX_ANNOUNCE_SCREENS, anns.size());
+  std::vector<Screen> seq = sequence(c, 1, {}, anns);
+  TEST_ASSERT_EQUAL(1 + 20, seq.size());
+  TEST_ASSERT_EQUAL_STRING("Announcement 20 of 20", seq[20].label.c_str());
+  TEST_ASSERT_EQUAL_STRING("n19", seq[20].announcement.c_str());  // the last five wait
+
+  // The screen on the wall is the same announcement wherever it moves in the list.
+  c = announceContent();
+  const std::vector<Screen> before = sequence(c, 1, {}, announcementScreens(c, "2026-11-06"));
+  TEST_ASSERT_EQUAL_STRING("only_6th", before[3].announcement.c_str());
+  c.announcements.insert(c.announcements.begin(), note("new_first"));
+  const std::vector<Screen> after = sequence(c, 1, {}, announcementScreens(c, "2026-11-06"));
+  TEST_ASSERT_EQUAL(4, findScreen(after, before[3]));
+  TEST_ASSERT_EQUAL(3, after[4].index);
+  // Midnight: only_6th has ended, so its screen is gone; week is still there.
+  const std::vector<Screen> later = sequence(c, 1, {}, announcementScreens(c, "2026-11-07"));
+  TEST_ASSERT_EQUAL(-1, findScreen(later, before[3]));
+  TEST_ASSERT_TRUE(findScreen(later, before[4]) > 0);
+}
+
 void test_js_strings() {
   const JsString s = fromUtf8("a\xF0\x9F\x92\xAA" "b");  // a, flexed biceps, b
   TEST_ASSERT_EQUAL(4, s.size());                        // UTF-16 units, like s.length
@@ -186,15 +398,133 @@ void test_test_pattern_marks_every_panel() {
   }
 }
 
+// ---- display power (display_set_power) ----------------------------------------------------------
+
+namespace {
+
+// The render loop's use of the gate, as display.cpp's tick() does it, with counters in
+// place of the GIF decoder and the panel. One 8 s GIF screen at 100 ms a frame.
+struct FakeWall {
+  PowerGate gate;
+  ScreenClock clock;
+  uint32_t screenMs = 8000;
+  int screens = 0, decoded = 0, pushed = 0, blanked = 0;
+
+  void start(uint32_t now) {
+    clock.startMs = now;
+    clock.lastDrawMs = now;
+    clock.nextFrameMs = now + 100;
+    screens++;
+  }
+  void tick(bool wantOn, uint32_t now) {
+    switch (gate.tick(wantOn, now, &clock)) {
+      case PowerGate::Step::kBlank:
+        blanked++;
+        return;
+      case PowerGate::Step::kIdle:
+        return;
+      case PowerGate::Step::kResume:
+        pushed++;  // the held frame, at the held brightness
+        break;
+      case PowerGate::Step::kRun:
+        break;
+    }
+    if (!clock.paused && clock.elapsedMs(now) >= screenMs) return start(now);
+    if (static_cast<int32_t>(now - clock.nextFrameMs) >= 0) {
+      decoded++;
+      pushed++;
+      clock.nextFrameMs += 100;
+    }
+  }
+  void run(bool wantOn, uint32_t from, uint32_t to) {
+    for (uint32_t t = from; t != to; t += 20) tick(wantOn, t);
+  }
+};
+
+}  // namespace
+
+void test_power_off_idles_and_resumes_where_it_was() {
+  for (const uint32_t t0 : {1000u, 0xFFFFFFFFu - 5000u}) {  // and across the millis() wrap
+    FakeWall w;
+    w.start(t0);
+    w.run(true, t0, t0 + 3000);
+    TEST_ASSERT_EQUAL(1, w.screens);
+    TEST_ASSERT_EQUAL(29, w.decoded);
+    const int decoded = w.decoded, pushed = w.pushed;
+    const uint32_t elapsed = w.clock.elapsedMs(t0 + 3000);
+
+    // An hour off: black once, then nothing decoded or pushed, and the screen doesn't move on.
+    w.run(false, t0 + 3000, t0 + 3000 + 3600000);
+    TEST_ASSERT_EQUAL(1, w.blanked);
+    TEST_ASSERT_EQUAL(decoded, w.decoded);
+    TEST_ASSERT_EQUAL(pushed, w.pushed);
+    TEST_ASSERT_EQUAL(1, w.screens);
+    TEST_ASSERT_TRUE(w.gate.off());
+
+    // Back on: the held frame is shown at once, then the frame that was due when it went
+    // off, and the screen has the time it had left.
+    const uint32_t back = t0 + 3000 + 3600000;
+    w.tick(true, back);
+    TEST_ASSERT_EQUAL(pushed + 2, w.pushed);
+    TEST_ASSERT_EQUAL(decoded + 1, w.decoded);
+    TEST_ASSERT_EQUAL(elapsed, w.clock.elapsedMs(back));
+    TEST_ASSERT_FALSE(w.gate.off());
+    w.run(true, back + 20, back + 4980);
+    TEST_ASSERT_EQUAL(1, w.screens);  // 3 s + 4.98 s: still the first screen
+    TEST_ASSERT_EQUAL(decoded + 50, w.decoded);  // frames carry on from where they were, none skipped or doubled
+    w.run(true, back + 4980, back + 5020);
+    TEST_ASSERT_EQUAL(2, w.screens);
+  }
+}
+
+void test_power_off_while_paused_and_messages_while_off() {
+  FakeWall w;
+  w.start(0);
+  w.run(true, 0, 2000);
+  w.clock.paused = true;
+  w.clock.pausedAtMs = 2000;
+  w.run(false, 2000, 600000);
+  w.run(true, 600000, 700000);
+  TEST_ASSERT_EQUAL(1, w.screens);
+  TEST_ASSERT_EQUAL(2000, w.clock.elapsedMs(700000));  // still frozen where the pause left it
+  w.clock.paused = false;
+  w.clock.startMs += 700000 - w.clock.pausedAtMs;  // the resume control, as display.cpp does it
+  TEST_ASSERT_EQUAL(2000, w.clock.elapsedMs(700000));
+
+  // Off, a setup message is drawn, then it goes: the panels are blanked again.
+  PowerGate g;
+  ScreenClock c;
+  TEST_ASSERT_TRUE(g.tick(false, 10, &c) == PowerGate::Step::kBlank);
+  TEST_ASSERT_TRUE(g.tick(false, 30, &c) == PowerGate::Step::kIdle);
+  g.shown();
+  TEST_ASSERT_TRUE(g.tick(false, 50, &c) == PowerGate::Step::kBlank);
+  TEST_ASSERT_TRUE(g.tick(false, 70, &c) == PowerGate::Step::kIdle);
+  TEST_ASSERT_TRUE(g.tick(true, 90, &c) == PowerGate::Step::kResume);
+  TEST_ASSERT_TRUE(g.tick(true, 110, &c) == PowerGate::Step::kRun);
+  // A waiting "retry later" keeps waiting for the time it had left.
+  c.idleUntilMs = 1000;
+  g.tick(false, 200, &c);
+  g.tick(true, 5200, &c);
+  TEST_ASSERT_EQUAL(6000, c.idleUntilMs);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_panel_map_is_a_bijection);
   RUN_TEST(test_panel_map_serpentine);
   RUN_TEST(test_sequence_expands_like_app_js);
   RUN_TEST(test_find_screen_across_publishes);
+  RUN_TEST(test_sequence_new_prs_one_screen_per_athlete);
+  RUN_TEST(test_new_prs_capped_per_pass);
+  RUN_TEST(test_new_prs_screen_follows_its_athlete);
+  RUN_TEST(test_sequence_announcements_one_screen_per_showing);
+  RUN_TEST(test_announcement_date_edges);
+  RUN_TEST(test_announcements_capped_and_followed);
   RUN_TEST(test_js_strings);
   RUN_TEST(test_no_clock_rules);
   RUN_TEST(test_message_is_centred);
   RUN_TEST(test_test_pattern_marks_every_panel);
+  RUN_TEST(test_power_off_idles_and_resumes_where_it_was);
+  RUN_TEST(test_power_off_while_paused_and_messages_while_off);
   return UNITY_END();
 }

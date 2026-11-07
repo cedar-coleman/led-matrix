@@ -80,7 +80,7 @@ Figures from the seller spec, for a 1280 x 480 mm wall (0.614 m²):
 | Supply wiring | Closed-frame supplies have exposed AC terminals: mount them in a grounded enclosure and connect the FG (earth) terminal. Trim V.ADJ so the panels see about 5.1 V under load. A 20 A fuse on each DC feed protects the wiring | Tie the two supplies' grounds together, never their +5 V outputs |
 | Distribution | Each panel's own power pigtail to a bus bar or distribution block; 14 AWG from each supply to its block | Don't daisy-chain power through panel pigtails |
 | Ground | The ESP32 board's GND tied to panel ground | Without a shared ground the data lines glitch |
-| Software cap | Brightness setting; a per-file cap for media (the console measures the brightest frame's current on upload, `peak_a`, and the wall plays the whole slide at `slideBrightness(peak_a, setting)`); and a per-frame limiter as a backstop that dims any frame that would push either supply past 15.3 A (`web/power.js` is the model the firmware ports) | Keeps a bright image from tripping a supply's overload protection, which shows as flicker or a reset. Capping the whole slide keeps a video's brightness steady instead of pumping frame to frame |
+| Software cap | Brightness setting; a per-file cap for media (the console measures the brightest frame's current on upload, `peak_a`, and the wall plays the whole slide at `slideBrightness(peak_a, setting, power)`); and a per-frame limiter as a backstop that dims any frame that would push a supply past its budget (15.3 A for each of today's two supplies; the "Power supplies" setting, `settings.power`, sets one or two supplies, their rating and the budget share; `web/power.js` is the model the firmware ports) | Keeps a bright image from tripping a supply's overload protection, which shows as flicker or a reset. Capping the whole slide keeps a video's brightness steady instead of pumping frame to frame |
 
 ### Readability at 5 to 25 ft (P5)
 
@@ -168,7 +168,8 @@ camera's shutter catching the refresh, not a fault, and the wall looks steady to
 
 ## 4. The display: what it shows
 
-The playlist rotates through three kinds of slides.
+The playlist rotates through media, the PR whiteboard, New PRs, announcements and the two
+Instagram screens (section 8).
 
 ### 4a. Image and video slides
 
@@ -218,7 +219,9 @@ Data rules taken from the chalkboard:
 - Annotations like `>152` or "115 clean / 120 jerk" (ishlie) go in a notes field, shown only
   in the web console, never on the wall.
 - A PR set in the last 7 days can show in green. This needs the editor to record a date,
-  which the chalkboard never had, so existing entries start with no date.
+  which the chalkboard never had, so existing entries start with no date. The wall stamps
+  the date, and the value the PR replaced (`pr_prev`), when a lift goes up (`API.md`
+  section 6).
 - Order is entry order, as on the chalkboard. Sorting by total or by name is a setting.
 - Page time: 31 athletes at 9 per page is 4 pages. At 8 s per page, a full pass takes 32 s.
 
@@ -237,10 +240,69 @@ Data rules taken from the chalkboard:
 then a second pass of pages showing BS / FS
 ```
 
-### 4d. Spotlight card (optional)
+### 4d. New PRs (built)
 
-One athlete fills the wall: the handle in large type plus all five lifts, with a "NEW PR"
-banner when a recent PR exists. It cycles through athletes who set a PR this week.
+One athlete per screen, for everyone with a PR inside the highlight window (Settings,
+"Show new PRs in green", 7 days by default). `web/prslides.js` is the spec and
+`docs/new-prs-mockup.png` shows three screens.
+
+```
+y 0 ███ NEW PR  Brad B. ██████████████████████████████████  ← brown banner, handle at 2x
+ 20 ═══════════════════════════ gold ═══════════════════
+ 28                    Snatch                              ← one lift: name at 2x,
+ 48             95.5 kg  +2.5                              ← weight at 3x, increase in green
+ 80 +2 more                                                ← several lifts: up to 3 rows at 2x
+ 89 ■ ■ ■                                         today    ← one dot per athlete, and when
+```
+
+- A rotation slide of type `new_prs` expands to one screen per athlete, newest PR first,
+  at most 20 a pass. Its screen time is per athlete. It is skipped when nobody qualifies,
+  when the window is 0 days, and while the wall's clock isn't set.
+- Who qualifies is the whiteboard's green rule: a visible athlete, a lift with a value, and
+  a PR date from today back to `days - 1` days ago, in the wall's time zone.
+- Each screen shows the athlete's recent lifts newest first: one lift large, or up to three
+  rows with the weights in one column and "+N more" below. The increase over `pr_prev`
+  shows in green when the wall recorded one; a lift that was blank before, or was stamped
+  before `pr_prev` existed, shows the weight alone.
+- A handle that doesn't fit at double size (more than 17 characters) drops to normal size;
+  past 34 characters it is cut with `~`.
+- The list is worked out again when athletes or settings change and when the wall's date
+  changes, so a screen that has run out of window drops off at midnight. A screen on the
+  wall stays put if the athlete moves in the list.
+- From the Athletes tab, "See it on the preview" after a new PR opens that athlete's New PRs
+  screen, or the whiteboard page with them when the New PRs slide is off.
+
+### 4e. Announcements (built)
+
+One coach's message per screen: white text on the brand teal, `rgb(0, 150, 150)`, the
+logo slide's background. `web/announceslides.js` is the spec.
+
+```
+y 0 ████████████████████████ teal ████████████████████████
+  5     Welcome to          ← centred, the biggest size that fits inside 4 px:
+ 32   The Strength          ← 3x (13 characters a line, 3 lines),
+ 59       Tank              ← 2x (20 a line, 5 lines), or 1x (41 a line, 9 lines)
+ 88           ■ ■ ■         ← one dot per announcement showing, the current one white
+```
+
+- A rotation slide of type `announcements` expands to one screen per announcement showing
+  today, in list order, at most 20 a pass. Its screen time is per announcement. It is
+  skipped when none is showing.
+- Showing today: switched on and, if it has dates, today (the wall's date) from the start
+  date to the end date, both included. While the wall's clock isn't set, only undated ones
+  show.
+- Text wraps at spaces and at each new line (up to 6). Size 3x or 2x is used only if no
+  word has to be split; at 1x a word longer than a line (41 characters) is split, and text
+  that needs more than nine lines is cut with `~`. The editor warns about that before
+  saving, and about characters the 5x7 font doesn't have (each shows as `?`).
+- With one announcement there are no dots, and the text is centred on the whole screen;
+  with several, it is centred above the dots.
+- A teal screen lights every LED, so it draws more than most screens: `web/power.js`
+  estimates 14.1 A on the busier supply at 100% brightness (full white is 29.4 A), under
+  the default 15.3 A budget. The power limiter still dims it if the supplies are set
+  smaller. To be measured on the wall.
+- Like New PRs, the list is worked out again when the announcements change and when the
+  wall's date changes, so one whose end date was yesterday drops off at midnight.
 
 ---
 
@@ -253,18 +315,19 @@ desktop and phone width, are in `tests/e2e/screenshots/`.
 
 | Tab | What it does |
 | --- | --- |
-| Wall | LED-dot preview of the rotation with the real screen times, a strip with one thumbnail per screen (click one, or use ← →, to hold it), a panel-edge overlay, and controls for the real wall. Status shows what the wall is showing now and any damaged config file; a collapsed "Diagnostics" section has firmware and console versions, last restart reason, lowest free memory, refresh rate, power limiter, clock and recent errors |
+| Wall | LED-dot preview of the rotation with the real screen times, a strip with one thumbnail per screen (click one, or use ← →, to hold it), a panel-edge overlay, and controls for the real wall: whether the real wall is lit, in words ("On until 9:00 pm", "Off until Tue 5:00 am (schedule)"), with "Turn on now" and "Turn off now" (the preview keeps playing and says when the real wall is off). Status shows what the wall is showing now and any damaged config file; a collapsed "Diagnostics" section has firmware and console versions, last restart reason, lowest free memory, refresh rate, power limiter, clock and recent errors |
 | Athletes | Edit names and lifts (kg, 0.5 kg steps, blanks allowed, Ttl typed in with a Σ shortcut and a warning above S + CJ), order, hide, notes, CSV import (merge by name or replace) and export. Below it, every whiteboard page exactly as the wall will draw it. The wall stamps PR dates on save; if someone else saved first, the edits stay on screen with a "Load the latest" button |
 | Media | Upload an image, GIF or video. The browser crops it to 256x96 (fill or fit, zoom, pan), trims video, converts to GIF and uploads it with its peak current (`peak_a`). Library with storage meter (against the 90% usable) and a note on files the wall will dim |
-| Rotation | Order, enable and time every screen, 5 to 999 seconds each (per page for the whiteboard, per story for Instagram), with the total time for one pass |
-| Settings | Title, brightness with the power estimate, athlete order, PR highlight days, time zone, Instagram connection (refresh and "Find it" run on the wall in the background; the page polls), change admin PIN |
+| Notices | Announcements: one card each with the LED preview exactly as the wall draws it, the text with a character count, on/off, optional start and end dates, move up or down and delete. Warns about characters the wall shows as "?" and offers to replace curly quotes, dashes and "..." with plain ones. Saves like Athletes (PIN, "someone else saved first" with "Load the latest") |
+| Rotation | Order, enable and time every screen, 5 to 999 seconds each (per page for the whiteboard, per story for Instagram, per athlete for New PRs, per announcement for Announcements), with the total time for one pass. The New PRs and Announcements rows say how many screens they would show today, or why they are skipped |
+| Settings | Title, brightness with the power estimate, power supplies (1 or 2, amps each, budget %), athlete order, PR highlight days, time zone, the display schedule (on/off, one or two time ranges per day, copy Monday to weekdays or every day, mistakes shown under the day), Instagram connection (refresh and "Find it" run on the wall in the background; the page polls), change admin PIN |
 
 First run: while the wall has no admin PIN, the console shows only a "Set an admin PIN" step
 (6 to 12 digits, typed twice). Every write needs the PIN; after 5 wrong PINs the wall locks
 that phone out for 30 s and longer after that, and the console shows the wait.
 
-Not built yet from the original plan: display schedule (on/off hours), firmware upload,
-backup and restore. Wi-Fi and the first admin PIN are set through the board's setup access
+Not built yet from the original plan: firmware upload from the console (the route exists,
+`API.md` section 15), backup and restore. Wi-Fi and the first admin PIN are set through the board's setup access
 point (section 7).
 
 ### How lifters are fitted onto pages
@@ -299,13 +362,21 @@ supply at 100%, so the wall can dim the whole slide once (section 2, Power).
 │ mDNS  gymboard.local                           │   │  ├─ Rotation scheduler         │
 │ Async web server: static UI + REST             │   │  ├─ Slide renderers:           │
 │ Upload handler → LittleFS /media               │   │  │   GIF / Whiteboard /        │
-│ Config store (JSON on LittleFS)                │──►│  │   IG story / IG posts       │
+│ Config store (JSON on LittleFS)                │──►│  │   New PRs / Announcements / │
+│                                                │   │  │   IG story, posts           │
 │ Instagram worker (HTTPS, JPEG → tiles)         │   │  ├─ Compose into PSRAM canvas  │
 │ NTP sync → RTC                                 │   │  ├─ Power limiter (per supply) │
 │ OTA update with rollback                       │   │  └─ Copy to HUB75 DMA buffer   │
 └────────────────────────────────────────────────┘   └────────────────────────────────┘
    config changes reach the renderer through a queue, so it never reads a half-written file
 ```
+
+The display schedule is worked out on core 0, which owns the time: netcore's pure
+`evaluateSchedule()` (host-tested across daylight-saving changes) runs every 15 s and after
+every schedule save or wake/sleep, and tells the display half through
+`display_set_power()` in `wall_shared.h`. Off, the render task blanks the panels and idles;
+`render::PowerGate` keeps the screen's timers so the rotation resumes where it was. A clock
+that isn't valid keeps the display on.
 
 Stack: PlatformIO, Arduino-ESP32 core 3.x, `ESP32-HUB75-MatrixPanel-DMA`,
 `ESPAsyncWebServer` + `AsyncTCP` (maintained fork), `ArduinoJson` 7, `AnimatedGIF`,
@@ -329,9 +400,15 @@ Wi-Fi and setup access point:
 - Pressing BOOT within 1.5 s of the wall lighting up and holding it 10 s clears the PIN (and opens the access point), for when the
   PIN is lost.
 
-The renderers in `web/layout.js`, `web/igslides.js` and `web/power.js` are the spec: the
-firmware ports them line for line, and a parity test compares the C++ output with the JS
-output pixel for pixel.
+The renderers in `web/layout.js`, `web/igslides.js`, `web/prslides.js`,
+`web/announceslides.js` and `web/power.js` are the spec: the firmware ports them line for line, and a parity test compares the C++
+output with the JS output pixel for pixel.
+
+New PRs and announcements depend on the date as well as the content. The render task keeps
+the lists it built with the date it used (`wall_local_date()`, "" while the clock isn't
+valid, which gives no New PRs and only undated announcements), checks the date once a
+second, and treats a change like the same content arriving again: the current screen
+finishes unless it has gone.
 
 ### Data files (the mock server writes the same files)
 
@@ -339,8 +416,9 @@ The exact schemas, defaults and start-up recovery are in `API.md` section 13. In
 
 | File | Contents |
 | --- | --- |
-| `athletes.json` | `{"rev", "athletes": [{"id", "name", "snatch", "clean_jerk", "total", "back_squat", "front_squat", "notes", "visible", "pr_dates": {lift: "YYYY-MM-DD"}}]}`, weights in kg or null. `pr_dates` are stamped by the wall |
-| `playlist.json` | `{"rev", "slides": [{"id", "type", "duration_s", "enabled", "file"?}]}`, type is `whiteboard`, `media`, `instagram_story` or `instagram_posts` |
+| `athletes.json` | `{"rev", "athletes": [{"id", "name", "snatch", "clean_jerk", "total", "back_squat", "front_squat", "notes", "visible", "pr_dates": {lift: "YYYY-MM-DD"}, "pr_prev": {lift: kg or null}}]}`, weights in kg or null. `pr_dates` and `pr_prev` (the value each PR replaced) are stamped by the wall |
+| `playlist.json` | `{"rev", "slides": [{"id", "type", "duration_s", "enabled", "file"?}]}`, type is `whiteboard`, `media`, `instagram_story`, `instagram_posts`, `new_prs` or `announcements` |
+| `announcements.json` | `{"rev", "announcements": [{"id", "text", "enabled", "start_date", "end_date"}]}`, dates `YYYY-MM-DD` or null |
 | `settings.json` | title, brightness (5 to 100), sort (`board`, `total`, `name`), pr_highlight_days (0 to 60), timezone, `pin_salt`, `pin_hash`, `pin_iter` (PBKDF2-HMAC-SHA256, 16-byte salt, 10000 iterations) |
 | `instagram.json` | enabled, account_id, access token (never returned by the API), refresh_minutes, last_fetch, last_error, stories and posts with their tile files (`"<gen>/story-0.bmp"`) |
 | `media_index.json` | per GIF: frame count (informational), `peak_a` and upload date |
@@ -362,16 +440,17 @@ ever sent. Errors are `{"error": "message for the coach", "code": "machine_code"
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/status` | Paused or playing, now playing, Wi-Fi, uptime, storage, clock and local date, diagnostics (reset reason, lowest free heap, refresh rate, limiter, versions, config errors, last 20 errors) |
+| GET | `/api/status` | Paused or playing, display on or off and why (`schedule_state`, `next_change`), now playing, Wi-Fi, uptime, storage, clock and local date, diagnostics (reset reason, lowest free heap, refresh rate, limiter, versions, config errors, last 20 errors) |
 | GET / PUT | `/api/athletes` | Read or replace the whole list with its `rev` (409 `stale` on an old rev). The wall stamps PR dates in its time zone |
 | GET / PUT | `/api/playlist` | Read or replace the rotation with its `rev` (duration_s whole seconds 5 to 999; media must exist) |
+| GET / PUT | `/api/announcements` | Read or replace the announcements with their `rev` (409 `stale` on an old rev) |
 | GET / PUT | `/api/settings` | Settings including time zone; `new_pin` sets the PIN (6 to 12 digits); PIN never returned |
 | GET / POST | `/api/media` | List with storage (`total_bytes`, `usable_bytes`), or upload a GIF (`?name=x.gif&frames=n&peak_a=amps`; 256x96, under 8 MB, within the usable 90%) |
 | DELETE | `/api/media/{name}` | Delete (409 while the rotation uses it) |
 | GET / PUT | `/api/instagram` | Instagram settings, current stories and posts, and the background job state (`busy`, `accounts`) |
 | POST | `/api/instagram/refresh` | Start a fetch in the background (202; 409 `busy` while a job runs) |
 | POST | `/api/instagram/accounts` | Start looking up the accounts the token can see, for "Find it" (202) |
-| POST | `/api/control` | `{"action": "next" \| "prev" \| "pause" \| "resume"}` |
+| POST | `/api/control` | `{"action": "next" \| "prev" \| "pause" \| "resume" \| "wake" \| "sleep"}`; wake and sleep turn the display on or off until the schedule next changes |
 | GET | `/media/{name}`, `/ig/{gen}/{tile}.bmp` | The GIFs, and the Instagram tiles as BMP for the console preview |
 
 ## 8. Instagram screens
@@ -470,7 +549,8 @@ because every fix after the wall is mounted arrives that way.
 
 **Phase 3: Instagram.** Worker task, tile generations, the two screen types.
 
-**Phase 4: hardening.** Schedule and dimming, backup and restore.
+**Phase 4: hardening.** Backup and restore. (The display schedule and the power-supply
+setting are built: `API.md` sections 7.4 and 7.5.)
 
 Still open:
 

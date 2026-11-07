@@ -26,14 +26,21 @@ void display_show_message(const char* line1, const char* line2) {
 void content_publish(ContentPtr content) {
   if (!content) return;
   published.fetch_add(1);
-  Serial.printf("[wall] content v%u: %u athletes, %u slides, %u media, %u stories, %u posts\n",
+  Serial.printf("[wall] content v%u: %u athletes, %u slides, %u media, %u stories, %u posts, %u announcements\n",
                 static_cast<unsigned>(content->version), static_cast<unsigned>(content->athletes.size()),
                 static_cast<unsigned>(content->slides.size()), static_cast<unsigned>(content->media.size()),
                 static_cast<unsigned>(content->instagram.stories.size()),
-                static_cast<unsigned>(content->instagram.posts.size()));
+                static_cast<unsigned>(content->instagram.posts.size()),
+                static_cast<unsigned>(content->announcements.size()));
 }
 
 void control_post(Control action) { Serial.printf("[wall] control %d\n", static_cast<int>(action)); }
+
+void display_set_power(bool on) {
+  static int last = -1;  // called at least once a minute; log only the changes
+  if (last != static_cast<int>(on)) Serial.printf("[wall] display %s\n", on ? "on" : "off");
+  last = on;
+}
 
 RenderStatus render_status() {
   RenderStatus s;

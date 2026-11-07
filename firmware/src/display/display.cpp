@@ -7,6 +7,9 @@
 //
 // Messages (display_show_message) stay on the wall until the next content_publish, or
 // until display_show_message is called with two empty lines.
+//
+// display_set_power(false) (the schedule, or a "sleep") blanks the panels and the task
+// idles; render::PowerGate keeps the screen's timers so it carries on where it was.
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <esp_heap_caps.h>
@@ -23,11 +26,14 @@
 #include <string>
 #include <vector>
 
+#include "announceslides.h"
 #include "gif_player.h"
 #include "hub75.h"
 #include "igslides.h"
 #include "layout.h"
 #include "power.h"
+#include "power_gate.h"
+#include "prslides.h"
 #include "rotation.h"
 #include "screens.h"
 #include "surface.h"
@@ -45,12 +51,15 @@ using render::ScreenKind;
 constexpr uint32_t kStoryRedrawMs = 100;  // the progress bar moves; the console redraws at the same rate
 constexpr uint32_t kIdleTickMs = 20;
 constexpr uint32_t kAllFailedRetryMs = 1000;
+constexpr uint32_t kOffTickMs = 200;  // while off: how often to look for the power coming back
+constexpr uint32_t kDateCheckMs = 1000;  // how often to look for the wall's date changing
 
 // ---- shared with the other core, under `lock` ------------------------------------------
 
 SemaphoreHandle_t lock = nullptr;
 QueueHandle_t controls = nullptr;
 std::atomic<int> flashWrites{0};
+std::atomic<bool> powerOn{true};
 
 ContentPtr pending;  // newest published content the render task hasn't taken yet
 bool messageActive = false;
@@ -77,30 +86,34 @@ struct Rotation {
   std::vector<const Athlete*> athletes;
   render::Fit fit;
   std::vector<render::Screen> seq;
+  // Who gets a New PRs screen, and which announcements show, depend on the date as well as
+  // the content, so both lists are tied to the date they were worked out for; prToday is ""
+  // while the clock isn't valid.
+  std::string prToday;
+  std::vector<render::PrEntry> prs;  // point into content->athletes
+  std::vector<const Announcement*> anns;  // point into content->announcements
   int index = -1;
-  uint32_t startMs = 0;
-  uint32_t pausedAtMs = 0;
-  bool paused = false;
+  render::ScreenClock clock;  // start, pause, next GIF frame, retry wait
   int heldPct = 50;           // brightness held for this screen
-  uint32_t lastDrawMs = 0;
-  uint32_t nextGifFrameMs = 0;
   int failures = 0;           // consecutive screens skipped because they can't be drawn
-  uint32_t idleUntilMs = 0;   // after every screen failed, wait before trying again
 } rot;
 
+render::PowerGate gate;
 int appliedPct = -1;
 
 void setStatus(const std::string& label, float scale) {
   Locked l;
   status.now_playing = label;
   status.limiter_scale = scale;
-  status.paused = rot.paused;
+  status.paused = rot.clock.paused;
 }
+
+PowerSupplies supplies() { return rot.content ? rot.content->settings.power : PowerSupplies(); }
 
 // The per-frame backstop: whatever the held brightness, no frame may push a supply past
 // its budget. Then copy to the panel.
 void present() {
-  const int pct = render::limitedBrightness(canvas, rot.heldPct);
+  const int pct = render::limitedBrightness(canvas, rot.heldPct, supplies());
   if (pct != appliedPct) {
     hub75::setBrightnessPct(pct);
     appliedPct = pct;
@@ -128,13 +141,16 @@ void adopt(ContentPtr c) {
   rot.content = std::move(c);
   rot.athletes = render::whiteboardAthletes(rot.content->athletes, rot.content->settings.sort);
   rot.fit = render::fitWhiteboard(rot.athletes);
-  rot.seq = render::sequence(*rot.content, rot.fit.pageCount);
+  rot.prToday = wall_local_date();
+  rot.prs = render::prScreens(*rot.content, rot.prToday);
+  rot.anns = render::announcementScreens(*rot.content, rot.prToday);
+  rot.seq = render::sequence(*rot.content, rot.fit.pageCount, rot.prs, rot.anns);
 }
 
 void drawStory(uint32_t now) {
   const Screen& sc = rot.seq[rot.index];
   const IgContent& ig = rot.content->instagram;
-  const double progress = std::min(1.0, (now - rot.startMs) / (sc.seconds * 1000.0));
+  const double progress = std::min(1.0, (now - rot.clock.startMs) / (sc.seconds * 1000.0));
   render::StoryView view;
   const bool has = sc.index < static_cast<int>(ig.stories.size());
   if (has) {
@@ -152,9 +168,9 @@ bool startScreen(uint32_t now) {
   const Screen& sc = rot.seq[rot.index];
   const Content& c = *rot.content;
   render::Surface s(canvas);
-  rot.startMs = now;
-  rot.pausedAtMs = now;
-  rot.lastDrawMs = now;
+  rot.clock.startMs = now;
+  rot.clock.pausedAtMs = now;
+  rot.clock.lastDrawMs = now;
   gif::close();
 
   switch (sc.kind) {
@@ -164,7 +180,7 @@ bool startScreen(uint32_t now) {
       opts.prDays = c.settings.pr_highlight_days;
       opts.today = wall_local_date();  // "" until the clock is set: no green PRs
       render::renderWhiteboardPage(s, rot.fit, sc.index, opts);
-      rot.heldPct = render::limitedBrightness(canvas, settingPct());
+      rot.heldPct = render::limitedBrightness(canvas, settingPct(), supplies());
       break;
     }
     case ScreenKind::kStory: {
@@ -174,7 +190,7 @@ bool startScreen(uint32_t now) {
         memset(storyTile, 0, render::kStoryTileBytes);  // missing tile: black, as in the JS
       }
       drawStory(now);
-      rot.heldPct = render::limitedBrightness(canvas, settingPct());
+      rot.heldPct = render::limitedBrightness(canvas, settingPct(), supplies());
       break;
     }
     case ScreenKind::kPosts: {
@@ -189,15 +205,30 @@ bool startScreen(uint32_t now) {
         posts.push_back(v);
       }
       render::renderPostsSlide(s, c.instagram.username, posts, wall_unix_time());
-      rot.heldPct = render::limitedBrightness(canvas, settingPct());
+      rot.heldPct = render::limitedBrightness(canvas, settingPct(), supplies());
+      break;
+    }
+    case ScreenKind::kNewPrs: {
+      // sequence() made one screen per entry, so the index is always in range; the date is
+      // the one the list was made for, so "today" and the list agree across midnight.
+      render::renderPrSlide(s, rot.prs[sc.index], sc.index, static_cast<int>(rot.prs.size()), rot.prToday);
+      rot.heldPct = render::limitedBrightness(canvas, settingPct(), supplies());
+      break;
+    }
+    case ScreenKind::kAnnouncement: {
+      // Like New PRs: one screen per entry of the list made for rot.prToday.
+      render::renderAnnouncement(s, rot.anns[sc.index]->text, sc.index, static_cast<int>(rot.anns.size()));
+      rot.heldPct = render::limitedBrightness(canvas, settingPct(), supplies());
       break;
     }
     case ScreenKind::kMedia: {
       int delayMs = 100;
       if (!gif::open(sc.file, canvas, &delayMs)) return false;
-      rot.nextGifFrameMs = now + delayMs;
+      rot.clock.nextFrameMs = now + delayMs;
       // Hold one brightness for the whole slide so bright frames don't pump it. The
       // uploader measured the brightest frame; without that, the first frame stands in.
+      // peak_a is the busier half on the two-supply split whatever the supplies, so the
+      // stand-in is measured that way too; slideBrightness applies the real supplies.
       float peak = -1;
       for (const MediaInfo& m : c.media) {
         if (m.name == sc.file) peak = m.peak_a;
@@ -206,7 +237,7 @@ bool startScreen(uint32_t now) {
         const render::SupplyAmps a = render::estimateSupplyAmps(canvas, 100);
         peak = static_cast<float>(std::max(a.a, a.b));
       }
-      rot.heldPct = render::slideBrightness(peak, settingPct());
+      rot.heldPct = render::slideBrightness(peak, settingPct(), supplies());
       break;
     }
   }
@@ -252,7 +283,7 @@ void advance(int delta, uint32_t now) {
   // Every screen failed (for example only media, all unreadable): show black and retry
   // later instead of spinning on the filesystem.
   showNothing("Nothing playable in the rotation");
-  rot.idleUntilMs = now + kAllFailedRetryMs;
+  rot.clock.idleUntilMs = now + kAllFailedRetryMs;
 }
 
 // New content arrived. Keep the current screen until it ends, unless it no longer exists.
@@ -263,8 +294,22 @@ void onContent(ContentPtr c, uint32_t now) {
     return;
   }
   render::Fit fit = render::fitWhiteboard(render::whiteboardAthletes(rot.incoming->athletes, rot.incoming->settings.sort));
-  const std::vector<Screen> next = render::sequence(*rot.incoming, fit.pageCount);
+  const std::string today = wall_local_date();
+  const std::vector<render::PrEntry> prs = render::prScreens(*rot.incoming, today);
+  const std::vector<Screen> next =
+      render::sequence(*rot.incoming, fit.pageCount, prs, render::announcementScreens(*rot.incoming, today));
   if (render::findScreen(next, rot.seq[rot.index]) < 0) advance(0, now);
+}
+
+// Midnight on the wall, or the clock becoming valid, changes who has a recent PR and which
+// announcements show, with no new content. Treat it as the same content arriving again: the current screen finishes
+// (unless it is gone), and an empty rotation starts as soon as there is something to show.
+void checkDate(uint32_t now) {
+  static uint32_t lastCheckMs = 0;
+  if (now - lastCheckMs < kDateCheckMs) return;
+  lastCheckMs = now;
+  if (!rot.content || rot.incoming || wall_local_date() == rot.prToday) return;
+  onContent(rot.content, now);
 }
 
 void onControl(Control action, uint32_t now) {
@@ -276,20 +321,20 @@ void onControl(Control action, uint32_t now) {
       advance(-1, now);
       break;
     case Control::kPause:
-      if (!rot.paused) {
-        rot.paused = true;
-        rot.pausedAtMs = now;
+      if (!rot.clock.paused) {
+        rot.clock.paused = true;
+        rot.clock.pausedAtMs = now;
       }
       break;
     case Control::kResume:
-      if (rot.paused) {
-        rot.paused = false;
-        rot.startMs += now - rot.pausedAtMs;  // the screen keeps the time it had left
+      if (rot.clock.paused) {
+        rot.clock.paused = false;
+        rot.clock.startMs += now - rot.clock.pausedAtMs;  // the screen keeps the time it had left
       }
       break;
   }
   Locked l;
-  status.paused = rot.paused;
+  status.paused = rot.clock.paused;
 }
 
 // One pass of the render loop. Returns how long to sleep.
@@ -300,13 +345,18 @@ uint32_t tick() {
   // refreshing it from internal RAM) and read nothing from flash until the write ends.
   if (flashWrites.load() > 0) return kIdleTickMs;
 
+  // While off, published content waits in `pending` (only the newest is kept) and controls
+  // wait in their queue, so nothing is drawn until the power comes back.
+  const bool wantOn = powerOn.load();
   ContentPtr fresh;
   bool showMessage = false, messageNew = false;
   std::string l1, l2;
   {
     Locked l;
-    fresh = std::move(pending);
-    pending.reset();
+    if (wantOn) {
+      fresh = std::move(pending);
+      pending.reset();
+    }
     if (fresh) messageActive = false;
     showMessage = messageActive;
     messageNew = messageChanged;
@@ -327,12 +377,31 @@ uint32_t tick() {
       gif::close();
       render::Surface s(canvas);
       render::renderMessage(s, l1, l2);
-      rot.heldPct = render::limitedBrightness(canvas, settingPct());
+      rot.heldPct = render::limitedBrightness(canvas, settingPct(), supplies());
       setStatus("Message: " + l1, 1);
       present();
+      gate.shown();  // setup details and errors show even while the display is off
     }
     return kIdleTickMs * 5;
   }
+
+  switch (gate.tick(wantOn, now, &rot.clock)) {
+    case render::PowerGate::Step::kBlank:
+      hub75::blank();
+      appliedPct = 0;
+      return kOffTickMs;
+    case render::PowerGate::Step::kIdle:
+      return kOffTickMs;
+    case render::PowerGate::Step::kResume:
+      // The canvas still holds the frame from before; show it at its brightness again. A
+      // message that ended while off restarts the rotation just below instead.
+      appliedPct = -1;
+      if (!showingMessage && rot.index >= 0) present();
+      break;
+    case render::PowerGate::Step::kRun:
+      break;
+  }
+
   if (showingMessage) {
     // Message gone (new content, or cleared): start the rotation over from the top.
     showingMessage = false;
@@ -346,26 +415,27 @@ uint32_t tick() {
 
   Control action;
   while (controls && xQueueReceive(controls, &action, 0) == pdTRUE) onControl(action, now);
+  checkDate(now);
 
-  if (rot.idleUntilMs) {
-    if (static_cast<int32_t>(now - rot.idleUntilMs) < 0) return kIdleTickMs * 5;
-    rot.idleUntilMs = 0;
+  if (rot.clock.idleUntilMs) {
+    if (static_cast<int32_t>(now - rot.clock.idleUntilMs) < 0) return kIdleTickMs * 5;
+    rot.clock.idleUntilMs = 0;
     advance(1, now);
   }
   if (rot.index < 0 || rot.index >= static_cast<int>(rot.seq.size())) return kIdleTickMs * 5;
 
   const Screen& sc = rot.seq[rot.index];
-  const uint32_t elapsed = (rot.paused ? rot.pausedAtMs : now) - rot.startMs;
-  if (!rot.paused && elapsed >= sc.seconds * 1000u) {
+  const uint32_t elapsed = rot.clock.elapsedMs(now);
+  if (!rot.clock.paused && elapsed >= sc.seconds * 1000u) {
     advance(1, now);
     return 1;
   }
 
-  if (sc.kind == ScreenKind::kStory && now - rot.lastDrawMs >= kStoryRedrawMs && !rot.paused) {
-    rot.lastDrawMs = now;
+  if (sc.kind == ScreenKind::kStory && now - rot.clock.lastDrawMs >= kStoryRedrawMs && !rot.clock.paused) {
+    rot.clock.lastDrawMs = now;
     drawStory(now);
     present();
-  } else if (sc.kind == ScreenKind::kMedia && static_cast<int32_t>(now - rot.nextGifFrameMs) >= 0) {
+  } else if (sc.kind == ScreenKind::kMedia && static_cast<int32_t>(now - rot.clock.nextFrameMs) >= 0) {
     int delayMs = 100;
     if (!gif::next(canvas, &delayMs)) {
       ESP_LOGW(TAG, "%s stopped decoding; skipping it", sc.file.c_str());
@@ -374,18 +444,76 @@ uint32_t tick() {
     }
     // Frame times are kept on a schedule, not relative to when the decode finished, so a
     // slow decode doesn't stretch the animation.
-    rot.nextGifFrameMs += delayMs;
-    if (static_cast<int32_t>(now - rot.nextGifFrameMs) > 500) rot.nextGifFrameMs = now + delayMs;
+    rot.clock.nextFrameMs += delayMs;
+    if (static_cast<int32_t>(now - rot.clock.nextFrameMs) > 500) rot.clock.nextFrameMs = now + delayMs;
     present();
   }
 
   uint32_t sleep = kIdleTickMs;
   if (sc.kind == ScreenKind::kMedia) {
-    const int32_t untilFrame = static_cast<int32_t>(rot.nextGifFrameMs - millis());
+    const int32_t untilFrame = static_cast<int32_t>(rot.clock.nextFrameMs - millis());
     sleep = untilFrame <= 1 ? 1 : std::min<uint32_t>(untilFrame, kIdleTickMs);
   }
   return sleep;
 }
+
+#ifdef WALL_CALIBRATE
+#ifndef WALL_CALIBRATE_MAX_PCT
+#define WALL_CALIBRATE_MAX_PCT 100
+#endif
+// Supply measurements (docs/power-wiring-guide.md, test 4): solid colours at a brightness
+// chosen over serial, with the power limiter bypassed so a clamp meter reads what the
+// panels really draw. WALL_CALIBRATE_MAX_PCT caps brightness so a stray key can't push
+// small supplies into overload.
+void calibrate() {
+  struct Pattern {
+    char key;
+    const char* name;
+    uint8_t r, g, b;
+  };
+  static const Pattern kPatterns[] = {
+      {'k', "off", 0, 0, 0},     {'w', "white", 255, 255, 255}, {'h', "mid grey", 128, 128, 128},
+      {'r', "red", 255, 0, 0},   {'g', "green", 0, 255, 0},     {'b', "blue", 0, 0, 255},
+  };
+  const Pattern* p = &kPatterns[0];
+  int pct = 10;
+  bool dirty = true;
+  Serial.printf(
+      "Calibration mode: power limiter OFF, brightness capped at %d%%.\n"
+      "Pattern keys: k off, w white, h mid grey, r red, g green, b blue.\n"
+      "Brightness keys: 1-9 = 10-90%%, 0 = 100%%.\n",
+      WALL_CALIBRATE_MAX_PCT);
+  setStatus("Calibration", 1);
+  for (;;) {
+    while (Serial.available()) {
+      const int c = Serial.read();
+      for (const auto& q : kPatterns) {
+        if (c == q.key) {
+          p = &q;
+          dirty = true;
+        }
+      }
+      if (c >= '0' && c <= '9') {
+        pct = c == '0' ? 100 : (c - '0') * 10;
+        dirty = true;
+      }
+    }
+    if (dirty) {
+      const int applied = std::min(pct, WALL_CALIBRATE_MAX_PCT);
+      for (int i = 0; i < render::kFrameBytes; i += 3) {
+        canvas[i] = p->r;
+        canvas[i + 1] = p->g;
+        canvas[i + 2] = p->b;
+      }
+      hub75::setBrightnessPct(applied);
+      hub75::push(canvas);
+      Serial.printf("%s at %d%%%s\n", p->name, applied, applied < pct ? " (capped)" : "");
+      dirty = false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+}
+#endif
 
 void renderTask(void*) {
   gif::init();
@@ -397,6 +525,8 @@ void renderTask(void*) {
   setStatus("Test pattern", 1);
   present();
   for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
+#elif defined(WALL_CALIBRATE)
+  calibrate();
 #else
   for (;;) vTaskDelay(pdMS_TO_TICKS(tick()));
 #endif
@@ -458,6 +588,8 @@ RenderStatus render_status() {
   Locked l;
   return status;
 }
+
+void display_set_power(bool on) { powerOn.store(on); }
 
 void display_flash_write_begin() { flashWrites.fetch_add(1); }
 void display_flash_write_end() {

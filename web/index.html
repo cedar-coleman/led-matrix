@@ -15,6 +15,7 @@
   <nav id="tabs" aria-label="Sections">
     <a href="#wall">Wall<span class="sr-only"></span></a>
     <a href="#athletes">Athletes<span class="sr-only"></span></a>
+    <a href="#notices" title="Announcements">Notices<span class="sr-only"></span></a>
     <a href="#media">Media<span class="sr-only"></span></a>
     <a href="#rotation">Rotation<span class="sr-only"></span></a>
     <a href="#settings">Settings<span class="sr-only"></span></a>
@@ -49,6 +50,7 @@
   <section id="wall" class="tab">
     <div class="card">
       <div class="card-head"><h2>Preview</h2><span class="muted">Only on this screen. The wall is not affected.</span></div>
+      <p id="pv-wall-off" class="wall-off" hidden></p>
       <p id="pv-label" class="pv-label"></p>
       <canvas id="pv-canvas" class="led"></canvas>
       <div class="row">
@@ -64,7 +66,12 @@
     </div>
     <div class="card">
       <h2>Control the wall</h2>
-      <p class="hint">These buttons change what the wall is showing right now.</p>
+      <p id="sched-line" class="sched-line" aria-live="polite"></p>
+      <div class="row">
+        <button type="button" data-control="wake">Turn on now</button>
+        <button type="button" data-control="sleep">Turn off now</button>
+      </div>
+      <p class="hint">Turning the wall on or off by hand lasts until the schedule next changes (set on the Settings tab). These buttons change what the wall is showing right now.</p>
       <div class="row">
         <button type="button" data-control="prev">◀ Previous</button>
         <button type="button" data-control="pause">Pause</button>
@@ -119,6 +126,26 @@
     <div class="card">
       <div class="card-head"><h2>How it fits on the wall</h2><span id="fit-summary" class="muted"></span></div>
       <div id="fit-pages" class="pages"></div>
+    </div>
+  </section>
+
+  <!-- Notices: announcements, one screen each on the wall -->
+  <section id="notices" class="tab">
+    <div class="card">
+      <div class="card-head"><h2>Announcements</h2><span id="ann-summary" class="muted"></span></div>
+      <p class="hint">Each announcement showing today gets a screen of its own, white on teal, in this order. The picture with each one is exactly what the wall will show.</p>
+      <p id="ann-rot-note" class="notice" hidden></p>
+      <div id="ann-errors" class="error-list" role="alert" hidden></div>
+      <ol id="ann-list" class="ann-list"></ol>
+      <p id="ann-empty" class="muted" hidden>No announcements yet.</p>
+      <div class="row"><button id="ann-add" type="button">+ Add announcement</button></div>
+      <p class="hint">Up to 200 characters, and up to 6 new lines (press Enter). The wall picks the biggest letters that fit. Leave the dates blank to show it every day; it shows on the end date too, then stops. The wall's letters are plain A to Z, digits and punctuation: anything else shows as "?".</p>
+      <div class="savebar" id="ann-bar">
+        <span class="save-state" id="ann-state" aria-live="polite"></span>
+        <span class="spacer"></span>
+        <button id="ann-revert" type="button" class="ghost">Discard</button>
+        <button id="ann-save" type="button" class="primary">Save</button>
+      </div>
     </div>
   </section>
 
@@ -183,11 +210,13 @@
       <ol id="rot-list" class="slides"></ol>
       <div class="row">
         <button id="rot-add-wb" type="button">+ PR whiteboard</button>
+        <button id="rot-add-prs" type="button">+ New PRs</button>
+        <button id="rot-add-ann" type="button">+ Announcements</button>
         <select id="rot-add-media" aria-label="Add media"><option value="">+ Media…</option></select>
         <button id="rot-add-story" type="button">+ Instagram story</button>
         <button id="rot-add-posts" type="button">+ Instagram posts</button>
       </div>
-      <p class="hint">Each screen shows for 5 to 999 seconds. For the PR whiteboard the time is per page, and every page is shown in turn. For the Instagram story it is per story; when there's no story from the last 24 hours, that screen is skipped. A video loops until its time is up. Untick "On" to keep a screen in the list without showing it.</p>
+      <p class="hint">Each screen shows for 5 to 999 seconds. For the PR whiteboard the time is per page, and every page is shown in turn. New PRs gives each athlete with a PR in the days set by "Show new PRs in green" in Settings a screen of their own, newest first, and the time is per athlete. Announcements gives each announcement showing today (Notices tab) a screen of its own, and the time is per announcement. For the Instagram story it is per story; when there's no story from the last 24 hours, that screen is skipped. A video loops until its time is up. Untick "On" to keep a screen in the list without showing it.</p>
       <div class="savebar" id="rot-bar">
         <span class="save-state" id="rot-state" aria-live="polite"></span>
         <span class="spacer"></span>
@@ -205,6 +234,20 @@
         <label>Title on the PR whiteboard <input id="set-title" maxlength="32"></label>
         <label>Brightness <span class="range"><input type="range" id="set-brightness" min="5" max="100"><output id="set-brightness-val"></output></span></label>
         <p id="set-power" class="hint"></p>
+        <fieldset class="power-set">
+          <legend>Power supplies</legend>
+          <div class="power-grid">
+            <label>Supplies
+              <select id="set-supplies">
+                <option value="1">1 (all 12 panels)</option>
+                <option value="2">2 (panels 1 to 6, 7 to 12)</option>
+              </select>
+            </label>
+            <label>Amps each <input type="number" id="set-rated" min="5" max="100" step="0.5" inputmode="decimal"></label>
+            <label>Budget % <input type="number" id="set-budget" min="50" max="95" step="1" inputmode="numeric"></label>
+          </div>
+          <p class="hint">Mean Well UHP-500-5: 1 supply, 80 A, on its aluminium plate.</p>
+        </fieldset>
         <label>Athlete order
           <select id="set-sort">
             <option value="board">Board order (as arranged on the Athletes tab)</option>
@@ -231,6 +274,22 @@
         <span class="spacer"></span>
         <button id="set-revert" type="button" class="ghost">Discard</button>
         <button id="set-save" type="button" class="primary">Save</button>
+      </div>
+    </div>
+    <div class="card" id="sch-card">
+      <div class="card-head"><h2>Schedule</h2><span id="sch-summary" class="muted"></span></div>
+      <label class="inline switch"><input type="checkbox" id="sch-enabled" role="switch"> Turn the wall on and off on this schedule</label>
+      <p class="hint">In the wall's time zone (set above). Outside these times the wall goes dark; the console and Instagram keep working. If the wall's clock isn't set, it stays on. An end of 12:00 am means midnight.</p>
+      <div id="sch-days" class="sched-days" role="group" aria-label="On times for each day"></div>
+      <div class="row">
+        <button type="button" id="sch-copy-weekdays">Copy Monday to weekdays</button>
+        <button type="button" id="sch-copy-all">Copy Monday to every day</button>
+      </div>
+      <div class="savebar" id="sch-bar">
+        <span class="save-state" id="sch-state" aria-live="polite"></span>
+        <span class="spacer"></span>
+        <button id="sch-revert" type="button" class="ghost">Discard</button>
+        <button id="sch-save" type="button" class="primary">Save</button>
       </div>
     </div>
     <div class="card">

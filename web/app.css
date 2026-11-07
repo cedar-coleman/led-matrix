@@ -319,8 +319,9 @@ dialog input { width: 100%; margin-top: 8px; font-size: 20px; letter-spacing: .2
 @media (max-width: 640px) {
   .top { padding: 8px 10px 0; gap: 4px; }
   .brand { font-size: 14px; }
-  nav { width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
-  nav a { padding: 12px 2px; text-align: center; font-size: 14px; border-radius: 6px 6px 0 0; }
+  nav { width: 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
+  /* Six tabs across 390 px: about 60 px each, enough for "Settings" at 13 px. */
+  nav a { padding: 13px 0; text-align: center; font-size: 13px; border-radius: 6px 6px 0 0; }
   nav a.dirty::after { margin-left: 3px; }
   main { padding: 10px; }
   .card { padding: 12px; }
@@ -365,7 +366,7 @@ dialog input { width: 100%; margin-top: 8px; font-size: 20px; letter-spacing: .2
 
   /* Rotation: picture on top, then the name, then one row of controls */
   .slide {
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     grid-template-areas:
       "thumb thumb thumb thumb"
       "info  info  info  info"
@@ -375,7 +376,10 @@ dialog input { width: 100%; margin-top: 8px; font-size: 20px; letter-spacing: .2
   .slide .thumb { grid-area: thumb; width: 100%; }
   .slide .info { grid-area: info; }
   .slide .order { grid-area: order; flex-direction: row; gap: 6px; }
-  .slide .secs-wrap.secs { grid-area: secs; }
+  /* "s per announcement" drops under the box rather than push the row past 390 px. */
+  .slide .secs-wrap.secs { grid-area: secs; flex-wrap: wrap; min-width: 0; }
+  /* Three digits fit in less; the room lets "s per athlete" sit beside it at 390 px. */
+  .slide input.secs { width: 4.5em; }
   .slide .secs-wrap.on { grid-area: on; }
   .slide .del { grid-area: del; }
 
@@ -397,3 +401,74 @@ body.setup-mode #tabs, body.setup-mode .tab { display: none !important; }
 .status dd.warn { color: var(--warn); }
 .status ul.errors { margin: 0; padding-left: 18px; }
 .status ul.errors li { margin: 0 0 4px; overflow-wrap: anywhere; }
+
+/* Wall tab: is the real wall on? */
+.sched-line { margin: 0; font-size: 16px; font-weight: 600; color: var(--good); }
+.sched-line.off { color: var(--warn); }
+.wall-off { margin: 0 0 6px; padding: 6px 10px; border: 1px solid var(--warn); border-radius: 6px; color: var(--warn); font-size: 14px; }
+
+/* Settings: power supplies */
+.power-set { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px 12px; margin: 0; min-width: 0; }
+.power-set legend { padding: 0 4px; font-size: 13px; color: var(--muted); }
+.power-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.power-grid label > input, .power-grid label > select { width: 100%; }
+
+/* Settings: schedule, one row per day. Wide: day, ranges, "+ Second time" in a line. On a
+   phone the day and the button share a line and the ranges get the full width below,
+   because 12-hour time boxes ("05:00 AM" and the clock icon) need about 125 px each. */
+.sched-days { display: grid; gap: 4px; margin-top: 12px; }
+.sched-days.dimmed .sched-day { opacity: .6; }
+.sched-day { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.sched-day .day-on { display: flex; align-items: center; gap: 8px; width: 5.5em; flex: none; font-weight: 600; min-height: 36px; }
+.sched-day .ranges { display: flex; flex-direction: column; gap: 6px; flex: 0 1 400px; min-width: 0; }
+.sched-day .range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; align-items: center; gap: 6px; max-width: 400px; }
+.sched-day input[type="time"] { width: 100%; }
+.sched-day .add { flex: none; }
+.sched-day .day-error { flex-basis: 100%; margin: 0; color: var(--bad); font-size: 13px; }
+.switch { font-weight: 600; }
+
+@media (max-width: 640px) {
+  .power-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .power-grid label:first-child { grid-column: 1 / 3; }
+  .sched-day .day-on { min-height: 44px; }
+  .sched-day .add { margin-left: auto; }
+  .sched-day .ranges { order: 3; flex-basis: 100%; }
+  .sched-day .day-error { order: 4; }
+}
+
+/* Notices: one card per announcement, the LED preview on top */
+.ann-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }
+.ann { display: grid; gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.ann.off canvas.led { opacity: .45; }
+.ann canvas.led { max-width: 768px; margin-top: 0; }
+.ann textarea {
+  width: 100%;
+  min-height: 5.6em;
+  resize: vertical;
+  font: inherit;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+.ann textarea:focus { outline: 2px solid var(--teal); outline-offset: -1px; }
+.ann textarea.invalid, .ann input.invalid { border-color: var(--bad); background: #2a1416; }
+.ann-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; font-size: 13px; color: var(--muted); }
+.ann-count.bad { color: var(--bad); font-weight: 600; }
+.ann-status.on { color: var(--good); }
+.ann-warn { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--warn); }
+.ann-chars { font-size: 15px; letter-spacing: .12em; color: var(--text); overflow-wrap: anywhere; }
+.ann-problem { margin: 0; font-size: 13px; color: var(--bad); }
+.ann-dates { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.ann-dates label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); min-width: 0; }
+.ann-dates input { width: 100%; }
+.ann-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ann-fields { display: grid; gap: 8px; min-width: 0; }
+/* Wide screens: the picture beside its text, at about the size of a phone's. */
+@media (min-width: 900px) {
+  .ann { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 14px; }
+}
+
+/* "Find it" results carry a page name and a 17-digit ID: let them wrap on a phone. */
+#ig-accounts button { white-space: normal; overflow-wrap: anywhere; text-align: left; max-width: 100%; }

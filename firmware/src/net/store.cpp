@@ -32,13 +32,14 @@ namespace {
 const char* const TAG = "store";
 
 constexpr int64_t kPinCacheMs = 5 * 60 * 1000;
-constexpr const char* kFiles[] = {"settings", "athletes", "playlist", "instagram", "media_index"};
+constexpr const char* kFiles[] = {"settings", "athletes", "playlist", "announcements", "instagram", "media_index"};
 
 SemaphoreHandle_t mu = nullptr;
 
 JsonDocument settingsDoc(psram());
 JsonDocument athletesDoc(psram());
 JsonDocument playlistDoc(psram());
+JsonDocument announcementsDoc(psram());
 JsonDocument instagramDoc(psram());  // instagram.json minus the token (that's in NVS)
 JsonDocument mediaIndexDoc(psram());
 JsonDocument configErrors(psram());
@@ -51,13 +52,22 @@ netcore::ErrorRing errorRing(20);
 
 std::string lastAction;
 bool paused = false;
+
+// The display schedule, parsed from settingsDoc on every save, and the wake/sleep override
+// (RAM only, like `paused`: a restart goes back to the schedule).
+netcore::Schedule schedule;
+netcore::Override scheduleOverride;
+bool displayOnSent = true;  // the display half starts on
 uint32_t contentVersion = 0;
 
-// What each label render_status() can report refers to, rebuilt on every publish.
+// What each label render_status() can report refers to. New PRs and announcement screens
+// depend on the date, so the list is rebuilt on every publish and when the date changes.
 struct Playing {
   std::string label, slideId, type, file;
 };
 std::vector<Playing> screens;
+std::string screensDate;
+ContentPtr screensContent;
 std::mutex screensMutex;
 
 // A recently verified PIN: SHA-256 of salt and PIN, so a PIN change (new salt) can
@@ -69,19 +79,6 @@ std::set<std::string> uploading;  // names with an upload in flight
 uint64_t reservedBytes = 0;
 
 std::string buildingGen;  // the generation the Instagram worker is filling
-
-const char* slideTypeName(SlideType t) {
-  switch (t) {
-    case SlideType::kMedia:
-      return "media";
-    case SlideType::kInstagramStory:
-      return "instagram_story";
-    case SlideType::kInstagramPosts:
-      return "instagram_posts";
-    default:
-      return "whiteboard";
-  }
-}
 
 std::string path(const char* name) { return std::string("/") + name + ".json"; }
 
@@ -115,6 +112,9 @@ void defaultsFor(const std::string& name, JsonDocument& doc) {
   } else if (name == "playlist") {
     doc["rev"] = 1;
     doc["slides"].to<JsonArray>();
+  } else if (name == "announcements") {
+    doc["rev"] = 1;
+    doc["announcements"].to<JsonArray>();
   } else if (name == "instagram") {
     netcore::defaultInstagram(doc.to<JsonObject>());
     doc.remove("access_token");
@@ -152,11 +152,12 @@ void load(const char* name, JsonDocument& doc) {
 
 void normalize() {
   netcore::fillSettingsDefaults(settingsDoc.as<JsonObject>());
-  for (JsonDocument* d : {&athletesDoc, &playlistDoc}) {
+  for (JsonDocument* d : {&athletesDoc, &playlistDoc, &announcementsDoc}) {
     (*d)["rev"] = netcore::revOf(d->as<JsonVariantConst>());
   }
   if (!athletesDoc["athletes"].is<JsonArray>()) athletesDoc["athletes"].to<JsonArray>();
   if (!playlistDoc["slides"].is<JsonArray>()) playlistDoc["slides"].to<JsonArray>();
+  if (!announcementsDoc["announcements"].is<JsonArray>()) announcementsDoc["announcements"].to<JsonArray>();
 
   JsonDocument d;
   netcore::defaultInstagram(d.to<JsonObject>());
@@ -277,6 +278,43 @@ const char* resetReason() {
   }
 }
 
+int zone() { return netcore::zoneIndex(settingsDoc["timezone"].as<std::string>()); }
+
+// Caller holds StoreLock.
+netcore::ScheduleStatus scheduleEvaluate() {
+  const netcore::ScheduleStatus st =
+      netcore::evaluateSchedule(schedule, zone(), wall_time_valid(), wall_unix_time(), &scheduleOverride);
+  if (st.displayOn != displayOnSent) {
+    ESP_LOGI(TAG, "display %s (%s)", st.displayOn ? "on" : "off", netcore::scheduleStateName(st.state));
+    displayOnSent = st.displayOn;
+  }
+  display_set_power(st.displayOn);
+  return st;
+}
+
+// The same screen list the render task builds for this date, so /api/status can turn its
+// label back into the slide it came from. Caller holds screensMutex.
+void rebuildScreens(const std::string& today) {
+  screensDate = today;
+  screens.clear();
+  if (!screensContent) return;
+  const Content& content = *screensContent;
+  const auto athletes = render::whiteboardAthletes(content.athletes, content.settings.sort);
+  const auto prs = render::prScreens(content, today);
+  const auto seq =
+      render::sequence(content, render::fitWhiteboard(athletes).pageCount, prs, render::announcementScreens(content, today));
+  for (const render::Screen& sc : seq) {
+    Playing p;
+    p.label = sc.label;
+    p.slideId = sc.slide_id;
+    p.file = sc.file;
+    for (const Slide& s : content.slides) {
+      if (s.id == sc.slide_id) p.type = netcore::slideTypeName(s.type);
+    }
+    screens.push_back(p);
+  }
+}
+
 void status(JsonObject s) {
   const RenderStatus rs = render_status();
   s["mock"] = false;
@@ -290,8 +328,11 @@ void status(JsonObject s) {
   } else {
     s["last_action"] = lastAction;
   }
+  netcore::scheduleStatusJson(scheduleEvaluate(), zone(), s);
   {
     std::lock_guard<std::mutex> l(screensMutex);
+    // After midnight the render task has a new list; follow it so its labels still match.
+    if (todayLocal() != screensDate) rebuildScreens(todayLocal());
     s["now_playing"] = nullptr;
     for (const Playing& p : screens) {
       if (p.label == rs.now_playing) {
@@ -332,6 +373,11 @@ void status(JsonObject s) {
 
 void controlPost(const std::string& a) {
   lastAction = a;
+  if (a == "wake" || a == "sleep") {
+    scheduleOverride = netcore::overrideFor(schedule, zone(), wall_time_valid(), wall_unix_time(), a == "wake");
+    scheduleEvaluate();
+    return;
+  }
   if (a == "pause" || a == "resume") paused = a == "pause";
   control_post(a == "next" ? Control::kNext : a == "prev" ? Control::kPrev : a == "pause" ? Control::kPause : Control::kResume);
 }
@@ -388,6 +434,23 @@ ApiError putPlaylist(Ctx& c) {
   return {};
 }
 
+ApiError putAnnouncements(Ctx& c) {
+  ApiError e = c.parse();
+  if (e.ok()) e = netcore::requireObject(c.body.as<JsonVariantConst>(), "announcements");
+  if (!e.ok()) return e;
+  const long long rev = netcore::revOf(announcementsDoc.as<JsonVariantConst>());
+  if (!(e = netcore::checkRev(c.body.as<JsonVariantConst>(), rev)).ok()) return e;
+  JsonDocument out(psram());
+  out["rev"] = rev + 1;
+  JsonArray list = out["announcements"].to<JsonArray>();
+  if (!(e = netcore::validateAnnouncements(c.body["announcements"].as<JsonArrayConst>(), list)).ok()) return e;
+  if (!save("announcements", out)) return storageError();
+  announcementsDoc = std::move(out);
+  publish();
+  c.ok(announcementsDoc.as<JsonVariantConst>());
+  return {};
+}
+
 ApiError putSettings(Ctx& c) {
   ApiError e = c.parse();
   if (e.ok()) e = netcore::requireObject(c.body.as<JsonVariantConst>());
@@ -398,6 +461,11 @@ ApiError putSettings(Ctx& c) {
   if (!save("settings", next)) return storageError();
   settingsDoc = std::move(next);
   timeSetZone(netcore::zoneIndex(settingsDoc["timezone"].as<std::string>()));
+  if (netcore::hasKey(c.body.as<JsonObjectConst>(), "schedule")) {
+    schedule = netcore::scheduleFromJson(settingsDoc["schedule"]);
+    scheduleOverride = netcore::Override();  // a new schedule starts clean
+  }
+  scheduleEvaluate();  // the schedule or the zone may have changed
   publish();
   JsonDocument out;
   netcore::settingsPublic(settingsDoc.as<JsonObjectConst>(), out.to<JsonObject>());
@@ -486,6 +554,10 @@ ApiError route(Ctx& c) {
   if (p == "/api/playlist") {
     if (get) return c.ok(playlistDoc.as<JsonVariantConst>()), ApiError();
     if (m == "PUT") return putPlaylist(c);
+  }
+  if (p == "/api/announcements") {
+    if (get) return c.ok(announcementsDoc.as<JsonVariantConst>()), ApiError();
+    if (m == "PUT") return putAnnouncements(c);
   }
   if (p == "/api/settings") {
     if (get) {
@@ -579,11 +651,21 @@ void storeBegin() {
   fsMkdir("/media");
   fsMkdir("/ig");
   fsCleanLeftovers();
-  JsonDocument* docs[] = {&settingsDoc, &athletesDoc, &playlistDoc, &instagramDoc, &mediaIndexDoc};
-  for (size_t i = 0; i < 5; i++) load(kFiles[i], *docs[i]);
+  JsonDocument* docs[] = {&settingsDoc, &athletesDoc, &playlistDoc, &announcementsDoc, &instagramDoc, &mediaIndexDoc};
+  for (size_t i = 0; i < 6; i++) load(kFiles[i], *docs[i]);
   normalize();
+  schedule = netcore::scheduleFromJson(settingsDoc["schedule"]);
   igPruneGenerations(igGenerationOf(instagramDoc.as<JsonVariantConst>()));
   publish();
+  scheduleEvaluate();
+}
+
+bool scheduleTick() {
+  // net_loop must not wait behind a PIN hash in the api task; it asks again in a second.
+  if (xSemaphoreTakeRecursive(mu, 0) != pdTRUE) return false;
+  scheduleEvaluate();
+  xSemaphoreGiveRecursive(mu);
+  return true;
 }
 
 void storeClearPin() {
@@ -729,29 +811,17 @@ void publish() {
   src.settings = settingsDoc.as<JsonObjectConst>();
   src.athletes = athletesDoc.as<JsonObjectConst>();
   src.playlist = playlistDoc.as<JsonObjectConst>();
+  src.announcements = announcementsDoc.as<JsonObjectConst>();
   src.mediaIndex = mediaIndexDoc.as<JsonObjectConst>();
   src.mediaFiles = mediaFiles();
   src.instagram = instagramDoc.as<JsonObjectConst>();
   src.igTokenSet = !token.empty();
   auto content = std::make_shared<Content>(netcore::buildContent(src, ++contentVersion));
 
-  // The same screen list the render task builds, so /api/status can turn its label back
-  // into the slide it came from.
-  const auto athletes = render::whiteboardAthletes(content->athletes, content->settings.sort);
-  const auto seq = render::sequence(*content, render::fitWhiteboard(athletes).pageCount);
   {
     std::lock_guard<std::mutex> g(screensMutex);
-    screens.clear();
-    for (const render::Screen& sc : seq) {
-      Playing p;
-      p.label = sc.label;
-      p.slideId = sc.slide_id;
-      p.file = sc.file;
-      for (const Slide& s : content->slides) {
-        if (s.id == sc.slide_id) p.type = slideTypeName(s.type);
-      }
-      screens.push_back(p);
-    }
+    screensContent = content;
+    rebuildScreens(todayLocal());
   }
   content_publish(std::move(content));
   setupMessageReshow();

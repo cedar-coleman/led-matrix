@@ -1,0 +1,1383 @@
+{
+ "_comment": "PUT /api/announcements validation cases (API.md section 6a). Read by tests/test_mock_server.py and firmware/test/test_netcore, so the mock and the firmware give the same answers. Edit it by hand: there is no generator.",
+ "cases": [
+  {
+   "name": "empty list",
+   "announcements": [],
+   "saved": []
+  },
+  {
+   "name": "cleaned: trimmed, blank dates null, enabled not false is true, unknown fields dropped",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "  Open gym\nSaturday  \n",
+     "enabled": "yes",
+     "start_date": "",
+     "end_date": null,
+     "extra": 1
+    }
+   ],
+   "saved": [
+    {
+     "id": "n1",
+     "text": "Open gym\nSaturday",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    }
+   ]
+  },
+  {
+   "name": "enabled false kept, dates kept",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "enabled": false,
+     "start_date": "2026-11-01",
+     "end_date": "2026-11-30"
+    }
+   ],
+   "saved": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "enabled": false,
+     "start_date": "2026-11-01",
+     "end_date": "2026-11-30"
+    }
+   ]
+  },
+  {
+   "name": "non-ASCII stored as sent",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Caf\u00e9 \u201cPR\u201d day \u2014 \ud83d\udcaa"
+    }
+   ],
+   "saved": [
+    {
+     "id": "n1",
+     "text": "Caf\u00e9 \u201cPR\u201d day \u2014 \ud83d\udcaa",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    }
+   ]
+  },
+  {
+   "name": "200 characters after trimming",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  "
+    }
+   ],
+   "saved": [
+    {
+     "id": "n1",
+     "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    }
+   ]
+  },
+  {
+   "name": "200 emoji are 200 characters",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa"
+    }
+   ],
+   "saved": [
+    {
+     "id": "n1",
+     "text": "\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    }
+   ]
+  },
+  {
+   "name": "6 line breaks",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "a\nb\nc\nd\ne\nf\ng"
+    }
+   ],
+   "saved": [
+    {
+     "id": "n1",
+     "text": "a\nb\nc\nd\ne\nf\ng",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    }
+   ]
+  },
+  {
+   "name": "trailing breaks are trimmed, not counted",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "a\n\n\n\n\n\n\n\n"
+    }
+   ],
+   "saved": [
+    {
+     "id": "n1",
+     "text": "a",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    }
+   ]
+  },
+  {
+   "name": "start only, end only, one-day range, leap day",
+   "announcements": [
+    {
+     "id": "s",
+     "text": "Hello",
+     "start_date": "2026-11-06"
+    },
+    {
+     "id": "e",
+     "text": "Hello",
+     "end_date": "2026-11-06"
+    },
+    {
+     "id": "d",
+     "text": "Hello",
+     "start_date": "2026-11-06",
+     "end_date": "2026-11-06"
+    },
+    {
+     "id": "l",
+     "text": "Hello",
+     "start_date": "2028-02-29"
+    }
+   ],
+   "saved": [
+    {
+     "id": "s",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": "2026-11-06",
+     "end_date": null
+    },
+    {
+     "id": "e",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": "2026-11-06"
+    },
+    {
+     "id": "d",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": "2026-11-06",
+     "end_date": "2026-11-06"
+    },
+    {
+     "id": "l",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": "2028-02-29",
+     "end_date": null
+    }
+   ]
+  },
+  {
+   "name": "50 announcements",
+   "announcements": [
+    {
+     "id": "n0",
+     "text": "Hello"
+    },
+    {
+     "id": "n1",
+     "text": "Hello"
+    },
+    {
+     "id": "n2",
+     "text": "Hello"
+    },
+    {
+     "id": "n3",
+     "text": "Hello"
+    },
+    {
+     "id": "n4",
+     "text": "Hello"
+    },
+    {
+     "id": "n5",
+     "text": "Hello"
+    },
+    {
+     "id": "n6",
+     "text": "Hello"
+    },
+    {
+     "id": "n7",
+     "text": "Hello"
+    },
+    {
+     "id": "n8",
+     "text": "Hello"
+    },
+    {
+     "id": "n9",
+     "text": "Hello"
+    },
+    {
+     "id": "n10",
+     "text": "Hello"
+    },
+    {
+     "id": "n11",
+     "text": "Hello"
+    },
+    {
+     "id": "n12",
+     "text": "Hello"
+    },
+    {
+     "id": "n13",
+     "text": "Hello"
+    },
+    {
+     "id": "n14",
+     "text": "Hello"
+    },
+    {
+     "id": "n15",
+     "text": "Hello"
+    },
+    {
+     "id": "n16",
+     "text": "Hello"
+    },
+    {
+     "id": "n17",
+     "text": "Hello"
+    },
+    {
+     "id": "n18",
+     "text": "Hello"
+    },
+    {
+     "id": "n19",
+     "text": "Hello"
+    },
+    {
+     "id": "n20",
+     "text": "Hello"
+    },
+    {
+     "id": "n21",
+     "text": "Hello"
+    },
+    {
+     "id": "n22",
+     "text": "Hello"
+    },
+    {
+     "id": "n23",
+     "text": "Hello"
+    },
+    {
+     "id": "n24",
+     "text": "Hello"
+    },
+    {
+     "id": "n25",
+     "text": "Hello"
+    },
+    {
+     "id": "n26",
+     "text": "Hello"
+    },
+    {
+     "id": "n27",
+     "text": "Hello"
+    },
+    {
+     "id": "n28",
+     "text": "Hello"
+    },
+    {
+     "id": "n29",
+     "text": "Hello"
+    },
+    {
+     "id": "n30",
+     "text": "Hello"
+    },
+    {
+     "id": "n31",
+     "text": "Hello"
+    },
+    {
+     "id": "n32",
+     "text": "Hello"
+    },
+    {
+     "id": "n33",
+     "text": "Hello"
+    },
+    {
+     "id": "n34",
+     "text": "Hello"
+    },
+    {
+     "id": "n35",
+     "text": "Hello"
+    },
+    {
+     "id": "n36",
+     "text": "Hello"
+    },
+    {
+     "id": "n37",
+     "text": "Hello"
+    },
+    {
+     "id": "n38",
+     "text": "Hello"
+    },
+    {
+     "id": "n39",
+     "text": "Hello"
+    },
+    {
+     "id": "n40",
+     "text": "Hello"
+    },
+    {
+     "id": "n41",
+     "text": "Hello"
+    },
+    {
+     "id": "n42",
+     "text": "Hello"
+    },
+    {
+     "id": "n43",
+     "text": "Hello"
+    },
+    {
+     "id": "n44",
+     "text": "Hello"
+    },
+    {
+     "id": "n45",
+     "text": "Hello"
+    },
+    {
+     "id": "n46",
+     "text": "Hello"
+    },
+    {
+     "id": "n47",
+     "text": "Hello"
+    },
+    {
+     "id": "n48",
+     "text": "Hello"
+    },
+    {
+     "id": "n49",
+     "text": "Hello"
+    }
+   ],
+   "saved": [
+    {
+     "id": "n0",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n1",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n2",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n3",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n4",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n5",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n6",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n7",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n8",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n9",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n10",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n11",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n12",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n13",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n14",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n15",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n16",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n17",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n18",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n19",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n20",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n21",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n22",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n23",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n24",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n25",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n26",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n27",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n28",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n29",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n30",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n31",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n32",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n33",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n34",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n35",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n36",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n37",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n38",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n39",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n40",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n41",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n42",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n43",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n44",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n45",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n46",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n47",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n48",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    },
+    {
+     "id": "n49",
+     "text": "Hello",
+     "enabled": true,
+     "start_date": null,
+     "end_date": null
+    }
+   ]
+  },
+  {
+   "name": "51 announcements",
+   "announcements": [
+    {
+     "id": "n0",
+     "text": "Hello"
+    },
+    {
+     "id": "n1",
+     "text": "Hello"
+    },
+    {
+     "id": "n2",
+     "text": "Hello"
+    },
+    {
+     "id": "n3",
+     "text": "Hello"
+    },
+    {
+     "id": "n4",
+     "text": "Hello"
+    },
+    {
+     "id": "n5",
+     "text": "Hello"
+    },
+    {
+     "id": "n6",
+     "text": "Hello"
+    },
+    {
+     "id": "n7",
+     "text": "Hello"
+    },
+    {
+     "id": "n8",
+     "text": "Hello"
+    },
+    {
+     "id": "n9",
+     "text": "Hello"
+    },
+    {
+     "id": "n10",
+     "text": "Hello"
+    },
+    {
+     "id": "n11",
+     "text": "Hello"
+    },
+    {
+     "id": "n12",
+     "text": "Hello"
+    },
+    {
+     "id": "n13",
+     "text": "Hello"
+    },
+    {
+     "id": "n14",
+     "text": "Hello"
+    },
+    {
+     "id": "n15",
+     "text": "Hello"
+    },
+    {
+     "id": "n16",
+     "text": "Hello"
+    },
+    {
+     "id": "n17",
+     "text": "Hello"
+    },
+    {
+     "id": "n18",
+     "text": "Hello"
+    },
+    {
+     "id": "n19",
+     "text": "Hello"
+    },
+    {
+     "id": "n20",
+     "text": "Hello"
+    },
+    {
+     "id": "n21",
+     "text": "Hello"
+    },
+    {
+     "id": "n22",
+     "text": "Hello"
+    },
+    {
+     "id": "n23",
+     "text": "Hello"
+    },
+    {
+     "id": "n24",
+     "text": "Hello"
+    },
+    {
+     "id": "n25",
+     "text": "Hello"
+    },
+    {
+     "id": "n26",
+     "text": "Hello"
+    },
+    {
+     "id": "n27",
+     "text": "Hello"
+    },
+    {
+     "id": "n28",
+     "text": "Hello"
+    },
+    {
+     "id": "n29",
+     "text": "Hello"
+    },
+    {
+     "id": "n30",
+     "text": "Hello"
+    },
+    {
+     "id": "n31",
+     "text": "Hello"
+    },
+    {
+     "id": "n32",
+     "text": "Hello"
+    },
+    {
+     "id": "n33",
+     "text": "Hello"
+    },
+    {
+     "id": "n34",
+     "text": "Hello"
+    },
+    {
+     "id": "n35",
+     "text": "Hello"
+    },
+    {
+     "id": "n36",
+     "text": "Hello"
+    },
+    {
+     "id": "n37",
+     "text": "Hello"
+    },
+    {
+     "id": "n38",
+     "text": "Hello"
+    },
+    {
+     "id": "n39",
+     "text": "Hello"
+    },
+    {
+     "id": "n40",
+     "text": "Hello"
+    },
+    {
+     "id": "n41",
+     "text": "Hello"
+    },
+    {
+     "id": "n42",
+     "text": "Hello"
+    },
+    {
+     "id": "n43",
+     "text": "Hello"
+    },
+    {
+     "id": "n44",
+     "text": "Hello"
+    },
+    {
+     "id": "n45",
+     "text": "Hello"
+    },
+    {
+     "id": "n46",
+     "text": "Hello"
+    },
+    {
+     "id": "n47",
+     "text": "Hello"
+    },
+    {
+     "id": "n48",
+     "text": "Hello"
+    },
+    {
+     "id": "n49",
+     "text": "Hello"
+    },
+    {
+     "id": "n50",
+     "text": "Hello"
+    }
+   ],
+   "error": "At most 50 announcements"
+  },
+  {
+   "name": "not an object",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello"
+    },
+    5
+   ],
+   "error": "Announcement 2 is not an object"
+  },
+  {
+   "name": "missing id",
+   "announcements": [
+    {
+     "text": "Hello"
+    }
+   ],
+   "error": "Announcement 1: missing or duplicate id"
+  },
+  {
+   "name": "duplicate id",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello"
+    },
+    {
+     "id": "n1",
+     "text": "Hello"
+    }
+   ],
+   "error": "Announcement 2: missing or duplicate id"
+  },
+  {
+   "name": "id with a space",
+   "announcements": [
+    {
+     "id": "n 1",
+     "text": "Hello"
+    }
+   ],
+   "error": "Announcement 1: missing or duplicate id"
+  },
+  {
+   "name": "id with a trailing newline",
+   "announcements": [
+    {
+     "id": "n1\n",
+     "text": "Hello"
+    }
+   ],
+   "error": "Announcement 1: missing or duplicate id"
+  },
+  {
+   "name": "id 33 characters",
+   "announcements": [
+    {
+     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "text": "Hello"
+    }
+   ],
+   "error": "Announcement 1: missing or duplicate id"
+  },
+  {
+   "name": "id checked before text",
+   "announcements": [
+    {
+     "id": 5,
+     "text": ""
+    }
+   ],
+   "error": "Announcement 1: missing or duplicate id"
+  },
+  {
+   "name": "text missing",
+   "announcements": [
+    {
+     "id": "n1"
+    }
+   ],
+   "error": "Announcement 1: text must be 1 to 200 characters"
+  },
+  {
+   "name": "text a number",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": 5
+    }
+   ],
+   "error": "Announcement 1: text must be 1 to 200 characters"
+  },
+  {
+   "name": "text blank",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "   \n "
+    }
+   ],
+   "error": "Announcement 1: text must be 1 to 200 characters"
+  },
+  {
+   "name": "text 201 characters",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   ],
+   "error": "Announcement 1: text must be 1 to 200 characters"
+  },
+  {
+   "name": "201 emoji",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa\ud83d\udcaa"
+    }
+   ],
+   "error": "Announcement 1: text must be 1 to 200 characters"
+  },
+  {
+   "name": "7 line breaks",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "a\nb\nc\nd\ne\nf\ng\nh"
+    }
+   ],
+   "error": "Announcement 1: at most 6 line breaks"
+  },
+  {
+   "name": "start date '2026-11-6'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "2026-11-6"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '2026-11-6'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "2026-11-6"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date '2026-02-29'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "2026-02-29"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '2026-02-29'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "2026-02-29"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date '2026-13-01'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "2026-13-01"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '2026-13-01'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "2026-13-01"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date '2026-11-31'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "2026-11-31"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '2026-11-31'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "2026-11-31"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date '0000-01-01'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "0000-01-01"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '0000-01-01'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "0000-01-01"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date '2026-11-06\\n'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "2026-11-06\n"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '2026-11-06\\n'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "2026-11-06\n"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date '2026-11-06T00:00'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "2026-11-06T00:00"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '2026-11-06T00:00'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "2026-11-06T00:00"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date '26-11-06'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "26-11-06"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '26-11-06'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "26-11-06"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date 20261106",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": 20261106
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date 20261106",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": 20261106
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date True",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": true
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date True",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": true
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "start date '\uff12026-11-06'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "\uff12026-11-06"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end date '\uff12026-11-06'",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "end_date": "\uff12026-11-06"
+    }
+   ],
+   "error": "Announcement 1: the end date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "end before start",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "2026-11-07",
+     "end_date": "2026-11-06"
+    }
+   ],
+   "error": "Announcement 1: the end date is before the start date"
+  },
+  {
+   "name": "start checked before end",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello",
+     "start_date": "x",
+     "end_date": "y"
+    }
+   ],
+   "error": "Announcement 1: the start date must be YYYY-MM-DD or blank"
+  },
+  {
+   "name": "the first bad one wins",
+   "announcements": [
+    {
+     "id": "n1",
+     "text": "Hello"
+    },
+    {
+     "id": "n2",
+     "text": ""
+    },
+    {
+     "id": "n2",
+     "text": "Hello"
+    }
+   ],
+   "error": "Announcement 2: text must be 1 to 200 characters"
+  }
+ ]
+}

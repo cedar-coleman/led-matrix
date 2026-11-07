@@ -9,7 +9,9 @@
 namespace wall {
 namespace render {
 
-SupplyAmps estimateSupplyAmps(const uint8_t* rgb, double brightnessPct) {
+double supplyBudgetA(const PowerSupplies& p) { return p.rated_a * (p.budget_pct / 100.0); }
+
+SupplyAmps estimateSupplyAmps(const uint8_t* rgb, double brightnessPct, const PowerSupplies& p) {
   // Integer sums are exact here and in the JS doubles (at most 24,576 x 765), so the two
   // agree to the last bit as long as the final multiplications run in the same order.
   uint32_t a = 0;
@@ -26,22 +28,26 @@ SupplyAmps estimateSupplyAmps(const uint8_t* rgb, double brightnessPct) {
       }
     }
   }
-  // Each supply covers 6 panels of 2048 pixels; full white is 765 per pixel.
+  // Six panels of 2048 pixels make half the wall; full white is 765 per pixel. The sums
+  // are exact, so adding them before scaling matches the JS bit for bit.
   const double perPixelA = PANEL_FULL_WHITE_A / (2048 * 765);
   const double k = (brightnessPct / 100) * perPixelA;
+  if (p.supplies == 1) return {static_cast<double>(a + b) * k, 0};
   return {a * k, b * k};
 }
 
-int limitedBrightness(const uint8_t* rgb, int brightnessPct) {
-  const SupplyAmps s = estimateSupplyAmps(rgb, brightnessPct);
+int limitedBrightness(const uint8_t* rgb, int brightnessPct, const PowerSupplies& p) {
+  const SupplyAmps s = estimateSupplyAmps(rgb, brightnessPct, p);
   const double worst = std::max(s.a, s.b);
-  if (worst <= SUPPLY_BUDGET_A) return brightnessPct;
-  return static_cast<int>(floor((brightnessPct * SUPPLY_BUDGET_A) / worst));
+  const double budget = supplyBudgetA(p);
+  if (worst <= budget) return brightnessPct;
+  return static_cast<int>(floor((brightnessPct * budget) / worst));
 }
 
-int slideBrightness(double peakA, int brightnessPct) {
+int slideBrightness(double peakA, int brightnessPct, const PowerSupplies& p) {
   if (!(peakA > 0)) return brightnessPct;
-  const double cap = floor(SUPPLY_BUDGET_A / peakA * 100);
+  const double load = p.supplies == 1 ? peakA * 2 : peakA;
+  const double cap = floor(supplyBudgetA(p) / load * 100);
   return cap < brightnessPct ? static_cast<int>(cap) : brightnessPct;
 }
 

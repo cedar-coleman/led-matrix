@@ -12,9 +12,10 @@ import time
 import unittest
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["MOCK_QUIET"] = "1"
@@ -160,6 +161,23 @@ class ApiTest(ApiBase):
         alli = next(a for a in body["athletes"] if a["name"] == "alli_garver")
         self.assertIsNone(alli["back_squat"])
 
+    def test_seeded_rotation_has_new_prs_after_the_whiteboard(self):
+        types = [x["type"] for x in self.call("GET", "/api/playlist")[1]["slides"]]
+        self.assertEqual(types[types.index("whiteboard") + 1], "new_prs")
+        athletes = self.call("GET", "/api/athletes")[1]["athletes"]
+        self.assertTrue(all(a["pr_prev"] == {} for a in athletes))
+
+    def test_new_prs_slide_type(self):
+        for d, ok in [(5, True), (999, True), (8, True), (4, False), (1000, False), (8.5, False), (True, False)]:
+            status, body = self.put_slides([{"id": "p1", "type": "new_prs", "duration_s": d, "enabled": True}])
+            self.assertEqual(status == 200, ok, f"duration {d!r}: {status} {body}")
+        status, body = self.put_slides([{"id": "p1", "type": "new_prs", "duration_s": 8, "file": "x.gif", "enabled": False}])
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["slides"], [{"id": "p1", "type": "new_prs", "duration_s": 8, "enabled": False}])
+        status, body = self.put_slides([{"id": "p1", "type": "new_pr", "duration_s": 8}])
+        self.assertEqual((status, body["error"]), (400, "Slide 1: type must be one of whiteboard, media, "
+                                                         "instagram_story, instagram_posts, new_prs, announcements"))
+
     def test_screen_time_limits(self):
         for d, ok in [(5, True), (999, True), (4, False), (1000, False), (7.5, False), ("10", False), (True, False)]:
             status, body = self.put_slides([{"id": "s1", "type": "whiteboard", "duration_s": d, "enabled": True}])
@@ -254,7 +272,9 @@ class ApiTest(ApiBase):
     def test_control(self):
         self.assertEqual(self.call("POST", "/api/control", {"action": "pause"})[0], 200)
         self.assertTrue(self.call("GET", "/api/status")[1]["paused"])
-        self.assertEqual(self.call("POST", "/api/control", {"action": "explode"})[0], 400)
+        status, body = self.call("POST", "/api/control", {"action": "explode"})
+        self.assertEqual((status, body), (400, {"error": "action must be next, prev, pause, resume, wake or sleep",
+                                                "code": "invalid"}))
 
     def test_instagram_slide_types_and_settings(self):
         for t in ("instagram_story", "instagram_posts"):
@@ -467,6 +487,36 @@ class PrDateTest(ApiBase):
         _, body = self.put_athletes(self.ann(snatch=None) + [new])
         self.assertEqual(body["athletes"][1]["pr_dates"], {})
 
+    def test_previous_value_recorded_with_the_date(self):
+        self.assertEqual(self.call("GET", "/api/athletes")[1]["athletes"][0]["pr_prev"], {})
+        _, body = self.put_athletes(self.ann(snatch=82.5, clean_jerk=100))  # up from 80, and filled in
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 80, "clean_jerk": None})
+        stored = json.loads((self.data / "athletes.json").read_text())["athletes"][0]
+        self.assertEqual((stored["pr_dates"], stored["pr_prev"]),
+                         ({"snatch": "2026-11-06", "clean_jerk": "2026-11-06"}, {"snatch": 80, "clean_jerk": None}))
+        self.assertEqual(self.call("GET", "/api/athletes")[1]["athletes"][0]["pr_prev"], body["athletes"][0]["pr_prev"])
+
+        # Down, same, cleared: nothing stamped, the previous values are kept.
+        for change in ({"snatch": 70}, {"snatch": 70, "back_squat": 150}, {"snatch": None}):
+            _, body = self.put_athletes(self.ann(clean_jerk=100, **change))
+            self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 80, "clean_jerk": None}, change)
+        # Filled in again after being cleared: there was nothing stored to replace.
+        _, body = self.put_athletes(self.ann(snatch=75, clean_jerk=100))
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": None, "clean_jerk": None})
+        # A second PR the same day records what that one replaced.
+        _, body = self.put_athletes(self.ann(snatch=77.5, clean_jerk=100.5))
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 75, "clean_jerk": 100})
+
+    def test_client_previous_values_are_ignored(self):
+        forged = {"snatch": 1, "back_squat": 2, "bench": 3}
+        _, body = self.put_athletes([self.ann(snatch=90)[0] | {"pr_prev": forged}])
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 80})
+        _, body = self.put_athletes([self.ann(snatch=90)[0] | {"pr_prev": {}}])
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 80})
+        new = {"id": "a2", "name": "Bo", "snatch": 60, "pr_prev": {"snatch": 50}}
+        _, body = self.put_athletes(self.ann(snatch=90) + [new])
+        self.assertEqual(body["athletes"][1]["pr_prev"], {})
+
     def test_bad_timezone_rejected(self):
         for tz in ("Europe/London", "PST", "", None):
             self.assertEqual(self.call("PUT", "/api/settings", {"timezone": tz})[0], 400, tz)
@@ -478,6 +528,13 @@ class PrDateTest(ApiBase):
         _, body = self.put_athletes(self.ann(snatch=90))
         self.assertEqual(body["athletes"][0]["snatch"], 90)
         self.assertEqual(body["athletes"][0]["pr_dates"], {})
+        self.assertEqual(body["athletes"][0]["pr_prev"], {})
+        self.store.time_valid = True
+        self.put_athletes(self.ann(snatch=95))
+        self.store.time_valid = False
+        _, body = self.put_athletes(self.ann(snatch=100))  # kept as they were, not restamped
+        self.assertEqual((body["athletes"][0]["pr_dates"], body["athletes"][0]["pr_prev"]),
+                         ({"snatch": "2026-11-06"}, {"snatch": 90}))
 
 
 class InstagramJobTest(ApiBase):
@@ -662,6 +719,266 @@ class StatusTest(ApiBase):
             self.store.note_error(f"error {i}")
         errors = self.call("GET", "/api/status")[1]["recent_errors"]
         self.assertEqual([e["message"] for e in errors], [f"error {i}" for i in range(5, 25)])
+
+
+LA = ZoneInfo("America/Los_Angeles")
+WEEKDAYS = [{"start": "05:00", "end": "21:00"}]
+# Mon to Fri 05:00-21:00, Saturday two ranges, Sunday off.
+WEEK = {"enabled": True, "days": {**{d: WEEKDAYS for d in ("mon", "tue", "wed", "thu", "fri")},
+                                  "sat": [{"start": "16:00", "end": "18:00"}, {"start": "08:00", "end": "12:00"}],
+                                  "sun": []}}
+
+
+def la(*args):
+    return datetime(*args, tzinfo=LA)
+
+
+class ScheduleTest(ApiBase):
+    """settings.schedule, wake/sleep and the status fields (API.md 7.4), on an injected clock."""
+
+    def setUp(self):
+        super().setUp()
+        self.now = la(2026, 11, 6, 20, 0)  # a Friday evening, PST
+        self.store.utcnow = lambda: self.now.astimezone(timezone.utc)
+
+    def state(self):
+        s = self.call("GET", "/api/status")[1]
+        return s["display_on"], s["schedule_state"], s["next_change"]
+
+    def control(self, action):
+        self.assertEqual(self.call("POST", "/api/control", {"action": action}), (200, {"ok": True}))
+
+    def put_schedule(self, schedule):
+        return self.call("PUT", "/api/settings", {"schedule": schedule})
+
+    def test_defaults(self):
+        s = self.call("GET", "/api/settings")[1]
+        self.assertEqual(s["schedule"], {"enabled": False, "days": {d: [{"start": "05:00", "end": "21:00"}] for d in
+                                                                     ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}})
+        self.assertEqual(s["power"], {"supplies": 2, "rated_a": 18, "budget_pct": 85})
+        self.assertEqual(list(s), ["title", "brightness", "sort", "pr_highlight_days", "timezone", "schedule", "power",
+                                   "pin_set"])
+        self.assertEqual(self.state(), (True, "always_on", None))
+
+    def test_validation(self):
+        day = lambda d, windows: {"enabled": True, "days": WEEK["days"] | {d: windows}}  # noqa: E731
+        cases = [
+            ("x", "Schedule must be an object with enabled and days", None),
+            ({"enabled": 1, "days": WEEK["days"]}, "Schedule enabled must be true or false", None),
+            ({"enabled": True}, "Schedule days must list mon, tue, wed, thu, fri, sat and sun", None),
+            ({"enabled": True, "days": {k: v for k, v in WEEK["days"].items() if k != "sun"}},
+             "Schedule days must list mon, tue, wed, thu, fri, sat and sun", None),
+            (day("tue", WEEKDAYS * 3), "Tuesday: give a list of 0 to 2 time ranges", "tue"),
+            (day("wed", {"start": "05:00", "end": "21:00"}), "Wednesday: give a list of 0 to 2 time ranges", "wed"),
+            (day("thu", [{"start": "5:00", "end": "21:00"}]),
+             "Thursday: times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)", "thu"),
+            (day("thu", [{"start": "24:00", "end": "24:00"}]),
+             "Thursday: times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)", "thu"),
+            (day("thu", [{"start": "05:00", "end": "24:01"}]),
+             "Thursday: times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)", "thu"),
+            (day("thu", [{"start": "05:00"}]), "Thursday: times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)", "thu"),
+            (day("thu", ["05:00-21:00"]), "Thursday: times must be HH:MM, 00:00 to 23:59 (an end can be 24:00)", "thu"),
+            (day("fri", [{"start": "09:00", "end": "09:00"}]), "Friday: a time range must end after it starts", "fri"),
+            (day("fri", [{"start": "21:00", "end": "05:00"}]), "Friday: a time range must end after it starts", "fri"),
+            (day("sun", [{"start": "05:00", "end": "12:00"}, {"start": "11:59", "end": "13:00"}]),
+             "Sunday: the two time ranges overlap", "sun"),
+        ]
+        before = self.call("GET", "/api/settings")[1]
+        for body, message, d in cases:
+            status, err = self.put_schedule(body)
+            want = {"error": message, "code": "invalid"} | ({"day": d} if d else {})
+            self.assertEqual((status, err), (400, want), body)
+        self.assertEqual(self.call("GET", "/api/settings")[1], before)
+        # Touching ranges are fine, 24:00 ends a day, ranges come back sorted, extra keys go.
+        ok = day("sun", [{"start": "12:00", "end": "24:00", "note": "x"}, {"start": "00:00", "end": "12:00"}])
+        status, saved = self.put_schedule(ok | {"extra": 1})
+        self.assertEqual(status, 200, saved)
+        self.assertEqual(saved["schedule"]["days"]["sun"], [{"start": "00:00", "end": "12:00"}, {"start": "12:00", "end": "24:00"}])
+        self.assertEqual(saved["schedule"]["days"]["sat"], [{"start": "08:00", "end": "12:00"}, {"start": "16:00", "end": "18:00"}])
+        self.assertNotIn("extra", saved["schedule"])
+
+    def test_states_through_a_week(self):
+        self.assertEqual(self.put_schedule(WEEK)[0], 200)
+        expect = [
+            (la(2026, 11, 6, 20, 0), (True, "on", "2026-11-06T21:00:00-08:00")),
+            (la(2026, 11, 6, 21, 0), (False, "off", "2026-11-07T08:00:00-08:00")),
+            (la(2026, 11, 7, 13, 0), (False, "off", "2026-11-07T16:00:00-08:00")),
+            (la(2026, 11, 7, 17, 59, 59), (True, "on", "2026-11-07T18:00:00-08:00")),
+            (la(2026, 11, 7, 19, 0), (False, "off", "2026-11-09T05:00:00-08:00")),  # Sunday is off
+            (la(2026, 11, 9, 4, 59), (False, "off", "2026-11-09T05:00:00-08:00")),
+        ]
+        for when, state in expect:
+            self.now = when
+            self.assertEqual(self.state(), state, when)
+        self.assertEqual(self.call("PUT", "/api/settings", {"timezone": "America/New_York"})[0], 200)
+        self.assertEqual(self.state(), (True, "on", "2026-11-09T21:00:00-05:00"))  # 07:59 in New York
+
+    def test_no_clock_fails_open(self):
+        self.put_schedule(WEEK | {"days": {d: [] for d in WEEK["days"]}})
+        self.assertEqual(self.state(), (False, "off", None))  # every day off: no change ahead
+        self.store.time_valid = False
+        self.assertEqual(self.state(), (True, "no_clock", None))
+
+    def test_wake_lasts_until_the_next_scheduled_change(self):
+        self.put_schedule(WEEK)
+        self.now = la(2026, 11, 6, 22, 0)
+        self.control("wake")
+        # On by hand until the schedule turns on at 08:00, then the schedule keeps it on to 12:00.
+        self.assertEqual(self.state(), (True, "override_on", "2026-11-07T12:00:00-08:00"))
+        self.now = la(2026, 11, 7, 7, 59, 59)
+        self.assertEqual(self.state(), (True, "override_on", "2026-11-07T12:00:00-08:00"))
+        self.now = la(2026, 11, 7, 8, 0)
+        self.assertEqual(self.state(), (True, "on", "2026-11-07T12:00:00-08:00"))
+        self.now = la(2026, 11, 7, 12, 0)
+        self.assertEqual(self.state(), (False, "off", "2026-11-07T16:00:00-08:00"))
+        self.assertEqual(self.call("GET", "/api/status")[1]["last_action"], "wake")
+
+    def test_sleep_lasts_until_the_next_scheduled_change(self):
+        self.put_schedule(WEEK)
+        self.control("sleep")
+        self.assertEqual(self.state(), (False, "override_off", "2026-11-07T08:00:00-08:00"))
+        self.now = la(2026, 11, 6, 21, 0)
+        self.assertEqual(self.state(), (False, "off", "2026-11-07T08:00:00-08:00"))
+        self.now = la(2026, 11, 7, 8, 0)
+        self.assertEqual(self.state(), (True, "on", "2026-11-07T12:00:00-08:00"))
+
+    def test_wake_while_on_and_saving_a_schedule_clear_the_override(self):
+        self.put_schedule(WEEK)
+        self.control("wake")  # already on: nothing to override
+        self.assertEqual(self.state(), (True, "on", "2026-11-06T21:00:00-08:00"))
+        self.control("sleep")
+        self.assertEqual(self.state()[1], "override_off")
+        self.control("wake")
+        self.assertEqual(self.state()[1], "on")
+        self.control("sleep")
+        self.assertEqual(self.put_schedule(WEEK)[0], 200)
+        self.assertEqual(self.state(), (True, "on", "2026-11-06T21:00:00-08:00"))
+        self.control("sleep")
+        self.assertEqual(self.call("PUT", "/api/settings", {"title": "OTHER"})[0], 200)  # not a schedule save
+        self.assertEqual(self.state()[1], "override_off")
+
+    def test_sleep_without_a_schedule_lasts_until_wake(self):
+        self.control("sleep")
+        self.assertEqual(self.state(), (False, "override_off", None))
+        self.now += timedelta(days=30)
+        self.assertEqual(self.state(), (False, "override_off", None))
+        self.control("wake")
+        self.assertEqual(self.state(), (True, "always_on", None))
+        self.store.time_valid = False
+        self.put_schedule(WEEK)
+        self.control("sleep")
+        self.assertEqual(self.state(), (False, "override_off", None))
+
+    def test_daylight_saving_and_midnight(self):
+        sunday = lambda windows: WEEK | {"days": WEEK["days"] | {"sun": windows}}  # noqa: E731
+        # Spring forward, Sunday 8 March 2026: 02:00 PST jumps to 03:00 PDT, so a range starting
+        # at 02:30 begins at the jump.
+        self.put_schedule(sunday([{"start": "02:30", "end": "05:00"}]))
+        self.now = la(2026, 3, 8, 1, 0)
+        self.assertEqual(self.state(), (False, "off", "2026-03-08T03:00:00-07:00"))
+        self.now = la(2026, 3, 8, 3, 0)
+        self.assertEqual(self.state(), (True, "on", "2026-03-08T05:00:00-07:00"))
+        # Fall back, Sunday 1 November 2026: 01:30 to 01:45 happens twice.
+        self.put_schedule(sunday([{"start": "01:30", "end": "01:45"}]))
+        self.now = la(2026, 11, 1, 0, 0)
+        self.assertEqual(self.state(), (False, "off", "2026-11-01T01:30:00-07:00"))
+        self.now = datetime(2026, 11, 1, 8, 50, tzinfo=timezone.utc)  # 01:50 PDT
+        self.assertEqual(self.state(), (False, "off", "2026-11-01T01:30:00-08:00"))
+        # A range to 24:00 and one from 00:00 the next day are one stretch: no change at midnight.
+        self.put_schedule(WEEK | {"days": WEEK["days"] | {"sat": [{"start": "20:00", "end": "24:00"}],
+                                                           "sun": [{"start": "00:00", "end": "02:00"}]}})
+        self.now = la(2026, 11, 7, 23, 0)
+        self.assertEqual(self.state(), (True, "on", "2026-11-08T02:00:00-08:00"))
+
+    def test_power_setting(self):
+        for body, message in [
+            ("x", "Power must be an object with supplies, rated_a and budget_pct"),
+            ({"supplies": 3, "rated_a": 18, "budget_pct": 85}, "Power supplies must be 1 or 2"),
+            ({"supplies": 1.0, "rated_a": 18, "budget_pct": 85}, "Power supplies must be 1 or 2"),
+            ({"supplies": True, "rated_a": 18, "budget_pct": 85}, "Power supplies must be 1 or 2"),
+            ({"supplies": 1, "rated_a": 4.9, "budget_pct": 85}, "Supply rating must be 5 to 100 A"),
+            ({"supplies": 1, "rated_a": 100.5, "budget_pct": 85}, "Supply rating must be 5 to 100 A"),
+            ({"supplies": 1, "rated_a": "80", "budget_pct": 85}, "Supply rating must be 5 to 100 A"),
+            ({"supplies": 1, "rated_a": True, "budget_pct": 85}, "Supply rating must be 5 to 100 A"),
+            ({"supplies": 1, "budget_pct": 85}, "Supply rating must be 5 to 100 A"),
+            ({"supplies": 1, "rated_a": 80, "budget_pct": 96}, "Power budget must be 50 to 95 percent"),
+            ({"supplies": 1, "rated_a": 80, "budget_pct": 49}, "Power budget must be 50 to 95 percent"),
+            ({"supplies": 1, "rated_a": 80, "budget_pct": 85.0}, "Power budget must be 50 to 95 percent"),
+        ]:
+            self.assertEqual(self.call("PUT", "/api/settings", {"power": body}),
+                             (400, {"error": message, "code": "invalid"}), body)
+        status, s = self.call("PUT", "/api/settings", {"power": {"supplies": 1, "rated_a": 80, "budget_pct": 85, "x": 1}})
+        self.assertEqual((status, s["power"]), (200, {"supplies": 1, "rated_a": 80, "budget_pct": 85}))
+        status, s = self.call("PUT", "/api/settings", {"power": {"supplies": 2, "rated_a": 30.5, "budget_pct": 50}})
+        self.assertEqual((status, s["power"]), (200, {"supplies": 2, "rated_a": 30.5, "budget_pct": 50}))
+        self.restart()
+        self.assertEqual(self.call("GET", "/api/settings")[1]["power"], {"supplies": 2, "rated_a": 30.5, "budget_pct": 50})
+
+
+ANNOUNCEMENT_CASES = json.loads((Path(__file__).resolve().parent / "announcement_cases.json").read_text())["cases"]
+
+
+class AnnouncementTest(ApiBase):
+    def put(self, announcements, rev=None, pin=True):
+        rev = self.rev("announcements") if rev is None else rev
+        return self.call("PUT", "/api/announcements", {"rev": rev, "announcements": announcements}, pin=pin)
+
+    def test_seeded_with_a_welcome_and_in_the_rotation(self):
+        self.assertEqual(self.call("GET", "/api/announcements", pin=False), (200, {"rev": 1, "announcements": [
+            {"id": "n1", "text": "Welcome to The Strength Tank", "enabled": True, "start_date": None, "end_date": None}]}))
+        slides = self.call("GET", "/api/playlist")[1]["slides"]
+        types = [x["type"] for x in slides]
+        self.assertEqual(types[types.index("new_prs") + 1], "announcements")
+        self.assertEqual(slides[types.index("announcements")]["duration_s"], 8)
+
+    def test_validation_cases_shared_with_the_firmware(self):
+        for case in ANNOUNCEMENT_CASES:
+            with self.subTest(case["name"]):
+                rev = self.rev("announcements")
+                status, body = self.put(case["announcements"], rev)
+                if "error" in case:
+                    self.assertEqual((status, body), (400, {"error": case["error"], "code": "invalid"}))
+                    self.assertEqual(self.rev("announcements"), rev, "nothing written")
+                else:
+                    self.assertEqual((status, body), (200, {"rev": rev + 1, "announcements": case["saved"]}))
+
+    def test_shape_rev_and_pin(self):
+        rev = self.rev("announcements")
+        for bad in ({"rev": rev}, {"rev": rev, "announcements": {}}, [], None):
+            self.assertEqual(self.call("PUT", "/api/announcements", bad),
+                             (400, {"error": 'Expected {"rev": n, "announcements": [...]}', "code": "invalid"}), bad)
+        # Shape, then rev, then contents: a stale save with bad contents is stale.
+        for stale in (rev - 1, rev + 1, "1", None, True):
+            status, body = self.call("PUT", "/api/announcements", {"rev": stale, "announcements": [{"id": "x"}]})
+            self.assertEqual((status, body), (409, {"error": "Someone else saved changes. Reload to see them.",
+                                                    "code": "stale", "rev": rev}), stale)
+        self.assertEqual(self.put([], pin=False)[1]["code"], "pin_required")
+        self.assertEqual(self.put([], pin="000000")[1]["code"], "pin_wrong")
+        self.assertEqual(self.rev("announcements"), rev)
+        status, body = self.put([{"id": "a", "text": "One"}], rev)
+        self.assertEqual((status, body["rev"]), (200, rev + 1))
+        self.assertEqual(self.put([{"id": "b", "text": "Two"}], rev)[0], 409)  # the same rev can't save twice
+        self.restart()
+        self.assertEqual(self.call("GET", "/api/announcements")[1]["announcements"][0]["text"], "One")
+
+    def test_slide_type(self):
+        for d, ok in [(5, True), (999, True), (8, True), (4, False), (1000, False), (8.5, False), (True, False)]:
+            status, body = self.put_slides([{"id": "n", "type": "announcements", "duration_s": d}])
+            self.assertEqual(status == 200, ok, f"duration {d!r}: {status} {body}")
+        status, body = self.put_slides([{"id": "n", "type": "announcements", "duration_s": 12, "file": "x.gif", "enabled": False}])
+        self.assertEqual((status, body["slides"]), (200, [{"id": "n", "type": "announcements", "duration_s": 12, "enabled": False}]))
+        self.assertEqual(self.put_slides([{"id": "n", "type": "announcement", "duration_s": 8}])[1]["error"],
+                         "Slide 1: type must be one of whiteboard, media, instagram_story, instagram_posts, new_prs, announcements")
+        self.call("POST", "/api/control", {"action": "next"})
+        self.put_slides([{"id": "n", "type": "announcements", "duration_s": 8}])
+        self.assertEqual(self.call("GET", "/api/status")[1]["now_playing"],
+                         {"slide_id": "n", "type": "announcements", "file": None})
+
+    def test_corrupt_file_at_start(self):
+        (self.data / "announcements.json").write_text('{"rev": 4, "announcements": [')
+        self.restart()
+        self.assertEqual(self.call("GET", "/api/announcements")[1], {"rev": 1, "announcements": []})
+        self.assertEqual([e["file"] for e in self.call("GET", "/api/status")[1]["config_errors"]], ["announcements.json"])
 
 
 class PinGuardTest(unittest.TestCase):

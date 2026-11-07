@@ -1,6 +1,7 @@
 #include "nc_tz.h"
 
 #include <ctype.h>
+#include <stdio.h>
 
 #include "nc_text.h"
 
@@ -122,6 +123,38 @@ int32_t utcOffsetAt(const char* posix, int64_t unix) {
   const int64_t end = ruleDay(y, tz.end) * 86400 + tz.end.time + tz.dstOff;
   const bool dst = start < end ? (unix >= start && unix < end) : !(unix >= end && unix < start);
   return -(dst ? tz.dstOff : tz.stdOff);
+}
+
+int64_t nextOffsetChange(const char* posix, int64_t unix) {
+  Tz tz;
+  if (!posix || !parse(posix, &tz) || !tz.hasDst) return -1;
+  int y;
+  unsigned m, d;
+  const int64_t stdLocal = unix - tz.stdOff;
+  civilFromDays(stdLocal >= 0 ? stdLocal / 86400 : -((-stdLocal + 86399) / 86400), &y, &m, &d);
+  // Both switches of last year, this year and next: whatever `unix` is, the next one is
+  // among them.
+  int64_t best = -1;
+  for (int year = y - 1; year <= y + 1; year++) {
+    for (const int64_t t : {ruleDay(year, tz.start) * 86400 + tz.start.time + tz.stdOff,
+                            ruleDay(year, tz.end) * 86400 + tz.end.time + tz.dstOff}) {
+      if (t > unix && (best < 0 || t < best)) best = t;
+    }
+  }
+  return best;
+}
+
+std::string localIso(int zone, int64_t unix) {
+  if (zone < 0 || zone >= kZoneCount) zone = kDefaultZone;
+  const int32_t off = utcOffsetAt(kZones[zone].posix, unix);
+  const int64_t local = unix + off;
+  const int64_t days = local >= 0 ? local / 86400 : -((-local + 86399) / 86400);
+  const int64_t sod = local - days * 86400;
+  const int32_t a = off < 0 ? -off : off;
+  char buf[24];
+  snprintf(buf, sizeof buf, "T%02d:%02d:%02d%c%02d:%02d", static_cast<int>(sod / 3600), static_cast<int>(sod / 60 % 60),
+           static_cast<int>(sod % 60), off < 0 ? '-' : '+', static_cast<int>(a / 3600), static_cast<int>(a / 60 % 60));
+  return civilDate(days) + buf;
 }
 
 std::string localDate(int zone, int64_t unix) {

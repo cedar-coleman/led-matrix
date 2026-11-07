@@ -91,6 +91,10 @@ struct HttpResp {
 // ---- the store (store.cpp), used from the api and ig tasks ---------------------------------------
 
 void storeBegin();  // recovery, defaults, prune, first publish
+// Works out the display schedule (API.md 7.4) and tells the display half. Called at least
+// once a minute from net_loop, and straight after a schedule save or a wake/sleep. False
+// if the store was busy (an api request holds it): try again shortly.
+bool scheduleTick();
 void storeClearPin();  // BOOT held 10 s at power-up
 void handleApi(const HttpReq& req, HttpResp* resp);  // api task only
 

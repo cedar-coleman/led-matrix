@@ -6,5 +6,6 @@
 #include "nc_ig.h"
 #include "nc_image.h"
 #include "nc_pin.h"
+#include "nc_schedule.h"
 #include "nc_text.h"
 #include "nc_tz.h"

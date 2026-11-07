@@ -22,6 +22,10 @@ constexpr uint32_t kPinResetHoldMs = 10000;
 
 std::atomic<int64_t> restartAt{-1};
 
+// The schedule is minute-granular; 15 s keeps a change within a quarter minute of its time.
+constexpr int64_t kScheduleEveryMs = 15000;
+int64_t scheduleAt = 0;
+
 struct BootAction {
   bool setup = false;
   bool clearPin = false;
@@ -92,6 +96,7 @@ void net_loop() {
   wifiLoop();
   timeLoop();
   otaHealthLoop(wifiConnected());
+  if (monotonicMs() >= scheduleAt && scheduleTick()) scheduleAt = monotonicMs() + kScheduleEveryMs;
   const int64_t at = restartAt.load();
   if (at >= 0 && monotonicMs() >= at) {
     ESP_LOGI(TAG, "restarting");

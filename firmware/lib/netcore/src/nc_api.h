@@ -23,7 +23,11 @@ constexpr int kMaxAthletes = 500;
 constexpr int kMaxSlides = 100;
 constexpr int kMinSeconds = 5, kMaxSeconds = 999;
 constexpr const char* kLifts[5] = {"snatch", "clean_jerk", "total", "back_squat", "front_squat"};
-constexpr const char* kSlideTypes[4] = {"whiteboard", "media", "instagram_story", "instagram_posts"};
+constexpr const char* kSlideTypes[6] = {"whiteboard", "media", "instagram_story", "instagram_posts", "new_prs",
+                                        "announcements"};
+constexpr int kMaxAnnouncements = 50;
+constexpr size_t kMaxAnnounceChars = 200;
+constexpr int kMaxAnnounceBreaks = 6;
 constexpr const char* kSorts[3] = {"board", "total", "name"};
 
 struct ApiError {
@@ -33,6 +37,7 @@ struct ApiError {
   long long rev = -1;       // stale: the current revision
   std::string busy;         // busy: the job running
   int retryAfter = -1;      // locked: seconds, also the Retry-After header
+  std::string day;          // invalid schedule: the day it is about ("mon"), if one
 
   bool ok() const { return status == 0; }
   static ApiError make(int status, std::string message, std::string code = "");
@@ -72,9 +77,12 @@ ApiError checkRev(JsonVariantConst body, long long current);
 long long revOf(JsonVariantConst doc);  // a missing or non-integer rev reads as 1
 
 ApiError validateAthletes(JsonArrayConst in, JsonArray out);
-// Server-side PR dates. today "" (clock not valid) stamps nothing; stored dates are kept.
+// Server-side PR dates, and in pr_prev the value each one replaced (null when the lift was
+// blank). today "" (clock not valid) stamps nothing; stored dates and previous values are kept.
 void stampPrs(JsonArray athletes, JsonArrayConst before, const std::string& today);
 ApiError validatePlaylist(JsonArrayConst in, const std::set<std::string>& mediaNames, JsonArray out);
+// PUT /api/announcements (API.md 6a): text trimmed, blank dates null, unknown fields dropped.
+ApiError validateAnnouncements(JsonArrayConst in, JsonArray out);
 
 // Apply a PUT /api/settings body to `settings` (a copy: on error the caller drops it).
 ApiError applySettings(JsonObjectConst body, JsonObject settings, const std::function<void(uint8_t*, size_t)>& random);
@@ -86,6 +94,11 @@ void settingsPublic(JsonObjectConst s, JsonObject out);
 ApiError applyInstagram(JsonObjectConst body, JsonObject ig, bool* tokenTouched);
 void defaultInstagram(JsonObject out);
 
+// settings.power (API.md 7.3), cleaned into `out`.
+ApiError validatePower(JsonVariantConst in, JsonObject out);
+void defaultPower(JsonObject out);
+
+// next, prev, pause, resume, wake or sleep.
 ApiError parseControl(JsonVariantConst body, std::string* action);
 
 // ---- media --------------------------------------------------------------------------------

@@ -18,6 +18,7 @@ struct ContentSources {
   JsonObjectConst settings;
   JsonObjectConst athletes;    // {"rev", "athletes"}
   JsonObjectConst playlist;    // {"rev", "slides"}
+  JsonObjectConst announcements;  // {"rev", "announcements"}
   JsonObjectConst mediaIndex;  // {"<name>.gif": {"peak_a", ...}}
   std::vector<std::string> mediaFiles;  // GIFs actually in /media
   JsonObjectConst instagram;
@@ -29,5 +30,9 @@ wall::Content buildContent(const ContentSources& src, uint32_t version);
 // The reverse, for the parts with a JSON form (used by tests to prove the round trip).
 void athletesToJson(const std::vector<wall::Athlete>& athletes, JsonArray out);
 void slidesToJson(const std::vector<wall::Slide>& slides, JsonArray out);
+void announcementsToJson(const std::vector<wall::Announcement>& list, JsonArray out);
+
+// The API's name for a slide type ("new_prs"), as in playlist.json and /api/status.
+const char* slideTypeName(wall::SlideType t);
 
 }  // namespace netcore

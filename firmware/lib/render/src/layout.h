@@ -67,6 +67,9 @@ struct WhiteboardOptions {
 // Perf: clears and draws one 256x96 frame; O(pixels + glyphs on the page).
 void renderWhiteboardPage(Surface& s, const Fit& fit, int pageIndex, const WhiteboardOptions& opts);
 
+// `!name.trim()` in JS: empty, or nothing but JS whitespace.
+bool blankName(const std::string& name);
+
 // What currentFit() in web/app.js feeds fitWhiteboard: athletes with a non-blank name,
 // sorted by the wall's setting.
 std::vector<const Athlete*> whiteboardAthletes(const std::vector<Athlete>& athletes, SortMode mode);

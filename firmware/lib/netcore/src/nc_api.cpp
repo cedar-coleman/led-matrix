@@ -6,8 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
 #include <map>
 
+#include "nc_schedule.h"
 #include "nc_text.h"
 #include "nc_tz.h"
 
@@ -73,6 +75,7 @@ void ApiError::toJson(JsonObject out) const {
   if (rev >= 0) out["rev"] = rev;
   if (!busy.empty()) out["busy"] = busy;
   if (retryAfter >= 0) out["retry_after_s"] = retryAfter;
+  if (!day.empty()) out["day"] = day;
 }
 
 bool pinSet(JsonObjectConst s) {
@@ -193,12 +196,16 @@ void stampPrs(JsonArray athletes, JsonArrayConst before, const std::string& toda
   for (JsonObject a : athletes) {
     auto it = old.find(a["id"].as<const char*>());
     JsonObject dates = a["pr_dates"].to<JsonObject>();
-    if (it == old.end()) continue;  // new athlete: no dates
+    JsonObject prev = a["pr_prev"].to<JsonObject>();
+    if (it == old.end()) continue;  // new athlete: no dates, no previous values
     const JsonObjectConst o = it->second;
-    if (o["pr_dates"].is<JsonObjectConst>()) {
-      for (JsonPairConst kv : o["pr_dates"].as<JsonObjectConst>()) {
+    // Stored maps carry over, lift keys only, in the stored order (the mock's dict order).
+    for (const char* key : {"pr_dates", "pr_prev"}) {
+      if (!o[key].is<JsonObjectConst>()) continue;
+      JsonObject into = !strcmp(key, "pr_dates") ? dates : prev;
+      for (JsonPairConst kv : o[key].as<JsonObjectConst>()) {
         for (const char* lift : kLifts) {
-          if (kv.key() == lift) dates[lift] = kv.value();
+          if (kv.key() == lift) into[lift] = kv.value();
         }
       }
     }
@@ -206,7 +213,14 @@ void stampPrs(JsonArray athletes, JsonArrayConst before, const std::string& toda
     for (const char* lift : kLifts) {
       JsonVariantConst v = a[lift], ov = o[lift];
       if (v.isNull()) continue;
-      if (!isJsonNumber(ov) || v.as<double>() > ov.as<double>()) dates[lift] = today;
+      if (!isJsonNumber(ov) || v.as<double>() > ov.as<double>()) {
+        dates[lift] = today;
+        if (isJsonNumber(ov)) {
+          prev[lift] = ov;  // keeps int or float, as stored
+        } else {
+          prev[lift] = nullptr;
+        }
+      }
     }
   }
 }
@@ -234,7 +248,7 @@ ApiError validatePlaylist(JsonArrayConst in, const std::set<std::string>& mediaN
         return ApiError::make(400, "Slide " + n + ": media file " + pyRepr(s["file"]) + " is not on the board");
       }
     } else if (!known) {
-      return ApiError::make(400, "Slide " + n + ": type must be one of " + joined(kSlideTypes, 4));
+      return ApiError::make(400, "Slide " + n + ": type must be one of " + joined(kSlideTypes, 6));
     }
     JsonObject clean = out.add<JsonObject>();
     clean["id"] = id;
@@ -246,12 +260,63 @@ ApiError validatePlaylist(JsonArrayConst in, const std::set<std::string>& mediaN
   return {};
 }
 
+ApiError validateAnnouncements(JsonArrayConst in, JsonArray out) {
+  if (in.size() > static_cast<size_t>(kMaxAnnouncements)) return ApiError::make(400, "At most 50 announcements");
+  std::set<std::string> seen;
+  int i = 0;
+  for (JsonVariantConst a : in) {
+    i++;
+    const std::string n = "Announcement " + std::to_string(i);
+    if (!a.is<JsonObjectConst>()) return ApiError::make(400, n + " is not an object");
+    const char* id = str(a["id"]);
+    if (!id || !isId(id) || seen.count(id)) return ApiError::make(400, n + ": missing or duplicate id");
+    seen.insert(id);
+    const char* raw = str(a["text"]);
+    const std::string text = raw ? pyStrip(raw) : "";
+    if (text.empty() || utf8Length(text) > kMaxAnnounceChars) {
+      return ApiError::make(400, n + ": text must be 1 to 200 characters");
+    }
+    if (std::count(text.begin(), text.end(), '\n') > kMaxAnnounceBreaks) {
+      return ApiError::make(400, n + ": at most 6 line breaks");
+    }
+    std::string dates[2];
+    const char* const keys[2] = {"start_date", "end_date"};
+    const char* const labels[2] = {"start", "end"};
+    for (int k = 0; k < 2; k++) {
+      JsonVariantConst v = a[keys[k]];
+      if (v.isNull()) continue;
+      const char* d = str(v);
+      if (!d || (*d && !isCalendarDate(d))) {
+        return ApiError::make(400, n + ": the " + labels[k] + " date must be YYYY-MM-DD or blank");
+      }
+      dates[k] = d;
+    }
+    if (!dates[0].empty() && !dates[1].empty() && dates[1] < dates[0]) {
+      return ApiError::make(400, n + ": the end date is before the start date");
+    }
+    JsonObject clean = out.add<JsonObject>();
+    clean["id"] = id;
+    clean["text"] = text;
+    clean["enabled"] = !(a["enabled"].is<bool>() && !a["enabled"].as<bool>());
+    for (int k = 0; k < 2; k++) {
+      if (dates[k].empty()) {
+        clean[keys[k]] = nullptr;
+      } else {
+        clean[keys[k]] = dates[k];
+      }
+    }
+  }
+  return {};
+}
+
 void defaultSettings(JsonObject out) {
   out["title"] = "THE STRENGTH TANK";
   out["brightness"] = 50;
   out["sort"] = "board";
   out["pr_highlight_days"] = 7;
   out["timezone"] = kZones[kDefaultZone].iana;
+  defaultSchedule(out["schedule"].to<JsonObject>());
+  defaultPower(out["power"].to<JsonObject>());
   out["pin_salt"] = nullptr;
   out["pin_hash"] = nullptr;
   out["pin_iter"] = nullptr;
@@ -320,6 +385,18 @@ ApiError applySettings(JsonObjectConst body, JsonObject s, const std::function<v
     }
     s["timezone"] = tz;
   }
+  if (hasKey(body, "schedule")) {
+    JsonDocument clean;
+    ApiError e = validateSchedule(body["schedule"], clean.to<JsonObject>());
+    if (!e.ok()) return e;
+    s["schedule"] = clean.as<JsonObjectConst>();
+  }
+  if (hasKey(body, "power")) {
+    JsonDocument clean;
+    ApiError e = validatePower(body["power"], clean.to<JsonObject>());
+    if (!e.ok()) return e;
+    s["power"] = clean.as<JsonObjectConst>();
+  }
   if (hasKey(body, "new_pin")) {
     const char* pin = str(body["new_pin"]);
     if (!pin || !isPin(pin)) return ApiError::make(400, "The PIN must be 6 to 12 digits");
@@ -375,15 +452,39 @@ ApiError applyInstagram(JsonObjectConst body, JsonObject ig, bool* tokenTouched)
   return {};
 }
 
+void defaultPower(JsonObject out) {
+  out["supplies"] = 2;  // two LRS-100-5s, as wired today
+  out["rated_a"] = 18;
+  out["budget_pct"] = 85;
+}
+
+ApiError validatePower(JsonVariantConst in, JsonObject out) {
+  if (!in.is<JsonObjectConst>()) return ApiError::make(400, "Power must be an object with supplies, rated_a and budget_pct");
+  JsonVariantConst n = in["supplies"], r = in["rated_a"], b = in["budget_pct"];
+  if (!isJsonInt(n) || (n.as<long long>() != 1 && n.as<long long>() != 2)) {
+    return ApiError::make(400, "Power supplies must be 1 or 2");
+  }
+  if (!isJsonNumber(r) || !(r.as<double>() >= 5 && r.as<double>() <= 100)) {
+    return ApiError::make(400, "Supply rating must be 5 to 100 A");
+  }
+  if (!isJsonInt(b) || b.as<long long>() < 50 || b.as<long long>() > 95) {
+    return ApiError::make(400, "Power budget must be 50 to 95 percent");
+  }
+  out["supplies"] = n;
+  out["rated_a"] = r;  // int or float, as the client sent it
+  out["budget_pct"] = b;
+  return {};
+}
+
 ApiError parseControl(JsonVariantConst body, std::string* action) {
   const char* a = body.is<JsonObjectConst>() ? str(body["action"]) : nullptr;
-  for (const char* ok : {"next", "prev", "pause", "resume"}) {
+  for (const char* ok : {"next", "prev", "pause", "resume", "wake", "sleep"}) {
     if (a && strcmp(a, ok) == 0) {
       *action = a;
       return {};
     }
   }
-  return ApiError::make(400, "action must be next, prev, pause or resume");
+  return ApiError::make(400, "action must be next, prev, pause, resume, wake or sleep");
 }
 
 ApiError parseUploadQuery(const std::string* name, const std::string* peak, const std::string* frames, UploadParams* out) {

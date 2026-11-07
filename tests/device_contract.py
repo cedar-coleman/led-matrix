@@ -3,9 +3,13 @@
     WALL_URL=http://gymboard.local WALL_PIN=123456 python3 tests/device_contract.py --yes
 
 It checks API.md from the outside: status fields, no CORS, the PIN rules, revisions,
-validation messages, media upload/delete, path traversal, and the device-only firmware
-route. It WRITES to the wall: it saves the athlete list and the rotation (restoring what
-was there), uploads and deletes a small test GIF, and pauses then resumes the rotation.
+validation messages, announcements, the display schedule and power settings, media
+upload/delete, path traversal, and the device-only firmware route. It WRITES to the wall: it
+saves the athlete list, the announcements and the rotation (restoring what was there),
+uploads and deletes a small test GIF,
+pauses then resumes the rotation, and switches the display off and on for a moment (then
+saves the schedule and power settings that were there, which also clears any by-hand
+on or off).
 It never touches the Instagram token, Wi-Fi or the PIN of a wall that already has one.
 
   --yes        required: confirms you accept the writes above
@@ -94,7 +98,7 @@ class Contract:
         kinds = {"mock": bool, "fw_version": str, "ui_version": str, "uptime_s": int, "reset_reason": str,
                  "paused": bool, "storage": dict, "wifi": dict, "time_valid": bool, "timezone": str,
                  "min_free_heap": int, "refresh_hz": (int, float), "limiter_scale": (int, float),
-                 "config_errors": list, "recent_errors": list}
+                 "config_errors": list, "recent_errors": list, "display_on": bool, "schedule_state": str}
         for k, kind in kinds.items():
             check(isinstance(st.get(k), kind) and not (kind is int and isinstance(st.get(k), bool)), f"status.{k} = {st.get(k)!r}")
         check(st["reset_reason"] in ("poweron", "external", "software", "panic", "int_wdt", "task_wdt", "wdt",
@@ -104,6 +108,9 @@ class Contract:
         check(st["storage"]["usable_bytes"] == st["storage"]["total_bytes"] * 9 // 10, "usable = floor(90%)")
         check(st["local_date"] is None if not st["time_valid"] else isinstance(st["local_date"], str), "local_date vs time_valid")
         check(st["now_playing"] is None or set(st["now_playing"]) == {"slide_id", "type", "file"}, "now_playing shape")
+        check(st["schedule_state"] in ("always_on", "on", "off", "override_on", "override_off", "no_clock"),
+              f"schedule_state {st['schedule_state']}")
+        check(st["next_change"] is None or isinstance(st["next_change"], str), "next_change")
         check(len(st["recent_errors"]) <= 20, "recent_errors <= 20")
         check(all(set(e) == {"time", "message"} for e in st["recent_errors"]), "recent_errors entries")
         check(h.get("Cache-Control") == "no-store", "Cache-Control: no-store")
@@ -188,16 +195,22 @@ class Contract:
         check(request("GET", "/api/athletes", pin=False)[1]["rev"] == rev, "a rejected save moved rev")
 
         try:
-            s, out, _, _ = request("PUT", "/api/athletes", {"rev": rev, "athletes": original + [base | {"snatch": 80, "pr_dates": {"snatch": "2020-01-01"}}]})
+            forged = {"pr_dates": {"snatch": "2020-01-01"}, "pr_prev": {"snatch": 1}}
+            s, out, _, _ = request("PUT", "/api/athletes", {"rev": rev, "athletes": original + [base | {"snatch": 80} | forged]})
             check(s == 200 and out["rev"] == rev + 1, f"save {s} {str(out)[:200]}")
             mine = out["athletes"][-1]
-            check(mine["pr_dates"] == {} and mine["snatch"] == 80, f"new athlete {mine}")
-            check(set(mine) == {"id", "name", "visible", "notes", "pr_dates", *LIFTS}, f"athlete keys {sorted(mine)}")
-            s, out, _, _ = request("PUT", "/api/athletes", {"rev": rev + 1, "athletes": original + [base | {"snatch": 82.5}]})
+            check(mine["pr_dates"] == {} and mine["pr_prev"] == {} and mine["snatch"] == 80, f"new athlete {mine}")
+            check(set(mine) == {"id", "name", "visible", "notes", "pr_dates", "pr_prev", *LIFTS}, f"athlete keys {sorted(mine)}")
+            s, out, _, _ = request("PUT", "/api/athletes", {"rev": rev + 1, "athletes": original + [base | {"snatch": 82.5, "clean_jerk": 100} | forged]})
             check(s == 200, f"second save {s}")
             st = request("GET", "/api/status", pin=False)[1]
-            want = {"snatch": st["local_date"]} if st["time_valid"] else {}
-            check(out["athletes"][-1]["pr_dates"] == want, f"PR stamp {out['athletes'][-1]['pr_dates']} vs {want}")
+            want = {"snatch": st["local_date"], "clean_jerk": st["local_date"]} if st["time_valid"] else {}
+            want_prev = {"snatch": 80, "clean_jerk": None} if st["time_valid"] else {}
+            mine = out["athletes"][-1]
+            check(mine["pr_dates"] == want, f"PR stamp {mine['pr_dates']} vs {want}")
+            check(mine["pr_prev"] == want_prev, f"previous values {mine['pr_prev']} vs {want_prev}")
+            stored = request("GET", "/api/athletes", pin=False)[1]["athletes"][-1]
+            check(stored["pr_prev"] == want_prev, f"previous values kept {stored['pr_prev']}")
         finally:
             cur = request("GET", "/api/athletes", pin=False)[1]
             s, out, _, _ = request("PUT", "/api/athletes", {"rev": cur["rev"], "athletes": original})
@@ -212,10 +225,64 @@ class Contract:
         out = expect(request("PUT", "/api/playlist", {"rev": rev, "slides": [{"id": "x", "type": "media", "file": "nope.gif", "duration_s": 10}]}),
                      400, "invalid", "unknown media")
         check(out["error"] == "Slide 1: media file 'nope.gif' is not on the board", out)
-        expect(request("PUT", "/api/playlist", {"rev": rev, "slides": [{"id": "x", "type": "tiktok", "duration_s": 6}]}), 400, "invalid", "tiktok")
+        out = expect(request("PUT", "/api/playlist", {"rev": rev, "slides": [{"id": "x", "type": "tiktok", "duration_s": 6}]}), 400, "invalid", "tiktok")
+        check(out["error"] == "Slide 1: type must be one of whiteboard, media, instagram_story, instagram_posts, new_prs, "
+                              "announcements", out)
+        expect(request("PUT", "/api/playlist", {"rev": rev, "slides": [{"id": "x", "type": "new_prs", "duration_s": 4}]}),
+               400, "invalid", "new_prs duration 4")
+        prs = {"id": "contract-prs", "type": "new_prs", "duration_s": 8, "file": "x.gif"}
+        s, out, _, _ = request("PUT", "/api/playlist", {"rev": rev, "slides": slides + [prs]})
+        check(s == 200 and out["slides"][-1] == {"id": "contract-prs", "type": "new_prs", "duration_s": 8, "enabled": True},
+              f"new_prs slide {s} {str(out)[-200:]}")
+        rev += 1
         expect(request("PUT", "/api/playlist", {"rev": rev + 5, "slides": slides}), 409, "stale", "stale playlist")
         s, out, _, _ = request("PUT", "/api/playlist", {"rev": rev, "slides": slides})
         check(s == 200 and out["rev"] == rev + 1 and out["slides"] == slides, f"playlist resave {s} {out}")
+
+    def t_announcements(self):
+        s, cur, _, _ = request("GET", "/api/announcements", pin=False)
+        check(s == 200 and isinstance(cur.get("rev"), int) and isinstance(cur.get("announcements"), list), f"GET {s} {cur}")
+        rev, original = cur["rev"], cur["announcements"]
+        slides = request("GET", "/api/playlist", pin=False)[1]["slides"]
+        expect(request("PUT", "/api/announcements", {"rev": rev, "announcements": []}, pin=False), 401, "pin_required", "no PIN")
+        expect(request("PUT", "/api/announcements", {"rev": rev + 3, "announcements": []}), 409, "stale", "stale rev")
+        out = expect(request("PUT", "/api/announcements", {"rev": rev}), 400, "invalid", "no list")
+        check(out["error"] == 'Expected {"rev": n, "announcements": [...]}', out)
+        for bad, msg in [
+            ([{"id": "c1", "text": "x" * 201}], "Announcement 1: text must be 1 to 200 characters"),
+            ([{"id": "c1", "text": "a\nb\nc\nd\ne\nf\ng\nh"}], "Announcement 1: at most 6 line breaks"),
+            ([{"id": "c1", "text": "x", "start_date": "2026-02-29"}], "Announcement 1: the start date must be YYYY-MM-DD or blank"),
+            ([{"id": "c1", "text": "x", "start_date": "2026-11-07", "end_date": "2026-11-06"}],
+             "Announcement 1: the end date is before the start date"),
+            ([{"id": "c1", "text": "x"}, {"id": "c1", "text": "y"}], "Announcement 2: missing or duplicate id"),
+            ([{"id": f"c{i}", "text": "x"} for i in range(51)], "At most 50 announcements"),
+        ]:
+            out = expect(request("PUT", "/api/announcements", {"rev": rev, "announcements": bad}), 400, "invalid", msg)
+            check(out["error"] == msg, out)
+        check(request("GET", "/api/announcements", pin=False)[1]["rev"] == rev, "a rejected save moved rev")
+        mine = [{"id": "contract-1", "text": "  Contract test\nline two \u201cquoted\u201d \U0001F4AA  ", "enabled": "yes",
+                 "start_date": "", "end_date": "2099-12-31", "extra": 1},
+                {"id": "contract-2", "text": "y" * 200, "enabled": False}]
+        s, out, _, _ = request("PUT", "/api/announcements", {"rev": rev, "announcements": mine})
+        try:
+            check(s == 200 and out["rev"] == rev + 1, f"save {s} {str(out)[:200]}")
+            want = [{"id": "contract-1", "text": "Contract test\nline two \u201cquoted\u201d \U0001F4AA", "enabled": True,
+                     "start_date": None, "end_date": "2099-12-31"},
+                    {"id": "contract-2", "text": "y" * 200, "enabled": False, "start_date": None, "end_date": None}]
+            check(out["announcements"] == want, f"saved {out['announcements']}")
+            check(request("GET", "/api/announcements", pin=False)[1] == {"rev": rev + 1, "announcements": want}, "read back")
+            s, out, _, _ = request("PUT", "/api/playlist", {"rev": request("GET", "/api/playlist", pin=False)[1]["rev"],
+                                                            "slides": [{"id": "contract-ann", "type": "announcements",
+                                                                        "duration_s": 999, "file": "x.gif"}]})
+            check(s == 200 and out["slides"] == [{"id": "contract-ann", "type": "announcements", "duration_s": 999, "enabled": True}],
+                  f"announcements slide {s} {out}")
+        finally:
+            _, cur, _, _ = request("GET", "/api/announcements", pin=False)
+            s, out, _, _ = request("PUT", "/api/announcements", {"rev": cur["rev"], "announcements": original})
+            check(s == 200 and out["announcements"] == original, "announcements restore")
+            _, pl, _, _ = request("GET", "/api/playlist", pin=False)
+            s, out, _, _ = request("PUT", "/api/playlist", {"rev": pl["rev"], "slides": slides})
+            check(s == 200 and out["slides"] == slides, "rotation restore")
 
     def t_media(self):
         q = lambda name, extra="": f"/api/media?name={name}{extra}"  # noqa: E731
@@ -300,8 +367,52 @@ class Contract:
             check(final["busy"] is None and (final["accounts"] is not None or final["accounts_error"]), "accounts finished")
         expect(request("GET", "/api/instagram/accounts", pin=False), 404, "not_found", "GET accounts")
 
+    def t_schedule_and_power(self):
+        _, before, _, _ = request("GET", "/api/settings", pin=False)
+        sched, power = before.get("schedule"), before.get("power")
+        check(isinstance(sched, dict) and set(sched) == {"enabled", "days"}, f"settings.schedule {sched}")
+        check(power is not None and set(power) == {"supplies", "rated_a", "budget_pct"}, f"settings.power {power}")
+        days = {d: [{"start": "05:00", "end": "21:00"}] for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}
+        for bad, msg in [({"schedule": {"enabled": "yes", "days": days}}, "Schedule enabled must be true or false"),
+                         ({"schedule": {"enabled": True, "days": {"mon": []}}},
+                          "Schedule days must list mon, tue, wed, thu, fri, sat and sun"),
+                         ({"power": {"supplies": 3, "rated_a": 18, "budget_pct": 85}}, "Power supplies must be 1 or 2"),
+                         ({"power": {"supplies": 1, "rated_a": 101, "budget_pct": 85}}, "Supply rating must be 5 to 100 A"),
+                         ({"power": {"supplies": 1, "rated_a": 80, "budget_pct": 96}}, "Power budget must be 50 to 95 percent")]:
+            body = expect(request("PUT", "/api/settings", bad), 400, "invalid", f"settings {bad}")
+            check(body == {"error": msg, "code": "invalid"}, f"message for {bad}: {body}")
+        overlap = days | {"wed": [{"start": "05:00", "end": "12:00"}, {"start": "11:00", "end": "13:00"}]}
+        body = expect(request("PUT", "/api/settings", {"schedule": {"enabled": True, "days": overlap}}), 400, "invalid", "overlap")
+        check(body == {"error": "Wednesday: the two time ranges overlap", "code": "invalid", "day": "wed"}, f"overlap: {body}")
+        check(request("GET", "/api/settings", pin=False)[1] == before, "a rejected schedule or power save changed something")
+        try:
+            # Sorted on save, 24:00 kept, extra keys dropped.
+            mine = days | {"sun": [{"start": "12:00", "end": "24:00", "x": 1}, {"start": "00:00", "end": "06:00"}]}
+            s, out, _, _ = request("PUT", "/api/settings", {"schedule": {"enabled": False, "days": mine},
+                                                            "power": {"supplies": 1, "rated_a": 80.5, "budget_pct": 85}})
+            check(s == 200 and out["schedule"]["days"]["sun"] == [{"start": "00:00", "end": "06:00"}, {"start": "12:00", "end": "24:00"}]
+                  and out["power"] == {"supplies": 1, "rated_a": 80.5, "budget_pct": 85}, f"schedule/power save {s} {out}")
+            st = request("GET", "/api/status", pin=False)[1]
+            check((st["display_on"], st["schedule_state"], st["next_change"]) == (True, "always_on", None), f"no schedule: {st}")
+            check(request("POST", "/api/control", {"action": "sleep"})[:2] == (200, {"ok": True}), "sleep")
+            st = request("GET", "/api/status", pin=False)[1]
+            check((st["display_on"], st["schedule_state"], st["last_action"]) == (False, "override_off", "sleep"), f"asleep: {st}")
+            check(request("POST", "/api/control", {"action": "wake"})[:2] == (200, {"ok": True}), "wake")
+            st = request("GET", "/api/status", pin=False)[1]
+            check((st["display_on"], st["schedule_state"]) == (True, "always_on"), f"awake: {st}")
+            # Every day off: off (or no_clock, which stays on) with nothing ahead.
+            s, _, _, _ = request("PUT", "/api/settings", {"schedule": {"enabled": True, "days": {d: [] for d in days}}})
+            st = request("GET", "/api/status", pin=False)[1]
+            want = (False, "off", None) if st["time_valid"] else (True, "no_clock", None)
+            check(s == 200 and (st["display_on"], st["schedule_state"], st["next_change"]) == want, f"all days off: {st}")
+        finally:
+            s, out, _, _ = request("PUT", "/api/settings", {"schedule": sched, "power": power})
+            check(s == 200 and out == before, "schedule/power restore")
+        return f"display {'on' if request('GET', '/api/status', pin=False)[1]['display_on'] else 'off'} after restore"
+
     def t_control(self):
-        expect(request("POST", "/api/control", {"action": "explode"}), 400, "invalid", "bad action")
+        out = expect(request("POST", "/api/control", {"action": "explode"}), 400, "invalid", "bad action")
+        check(out["error"] == "action must be next, prev, pause, resume, wake or sleep", out)
         was = request("GET", "/api/status", pin=False)[1]["paused"]
         check(request("POST", "/api/control", {"action": "pause"})[:2] == (200, {"ok": True}), "pause")
         st = request("GET", "/api/status", pin=False)[1]
@@ -336,7 +447,8 @@ class Contract:
     def run(self):
         tests = [m for m in dir(self) if m.startswith("t_")]
         order = ["t_status_fields", "t_no_cors", "t_console_served", "t_pin", "t_settings", "t_bodies", "t_athletes",
-                 "t_playlist", "t_media", "t_paths", "t_instagram", "t_control", "t_firmware_route", "t_lockout"]
+                 "t_playlist", "t_announcements", "t_media", "t_paths", "t_instagram", "t_schedule_and_power", "t_control", "t_firmware_route",
+                 "t_lockout"]
         assert sorted(order) == sorted(tests)
         failed = passed = 0
         for name in order:
@@ -365,8 +477,9 @@ def main():
     ap.add_argument("--instagram", action="store_true", help="also run an Instagram account lookup if a token is saved")
     args = ap.parse_args()
     print(f"Wall: {URL}")
-    print("WARNING: this test writes to the wall. It re-saves the athletes and the rotation (restoring\n"
-          "them afterwards), uploads and deletes a test GIF, and pauses/resumes the rotation.")
+    print("WARNING: this test writes to the wall. It re-saves the athletes, the announcements and the\n"
+          "rotation (restoring them afterwards), uploads and deletes a test GIF, pauses/resumes the rotation, and turns the\n"
+          "display off and on for a moment (then restores the schedule and power settings).")
     if not args.yes:
         print("Not run. Add --yes to accept the writes.")
         return 2

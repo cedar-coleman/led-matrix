@@ -80,14 +80,191 @@ async function run() {
   const see = [...doc.querySelectorAll('#ath-state button')].find((b) => /See it/.test(b.textContent));
   check('offers to show it on the preview', see);
   see?.click();
+  await until(() => /New PR: Jess T/.test($('#pv-label').textContent));
+  check('wall tab is open', $('#wall').classList.contains('active'));
+  check('preview is held', /Held/.test($('#pv-timer').textContent), $('#pv-timer').textContent);
+  // The server seeded four athletes with PRs over the last three days; Jess makes five, and
+  // shares today with two of them, after them in board order.
+  check("preview holds Jess's New PRs screen", /^\d+ of \d+: New PR: Jess T, 3 of 5$/.test($('#pv-label').textContent), $('#pv-label').textContent);
+  await until(() => [...doc.querySelectorAll('#pv-strip button')].some((b) => /New PR: Jess T/.test(b.title)));
+  const prThumbs = [...doc.querySelectorAll('#pv-strip button')].filter((b) => /^New PR:/.test(b.title)).map((b) => b.title);
+  check('screen strip has one screen per athlete, newest PR first', prThumbs.length === 5 &&
+    /Brad B\./.test(prThumbs[0]) && /alli_garver/.test(prThumbs[1]) && /Jess T/.test(prThumbs[2]) &&
+    /the_peoples_master/.test(prThumbs[3]) && /jedthefred/.test(prThumbs[4]), prThumbs.join('; '));
+
+  // Rotation tab: the New PRs row, its "+" button and its part of the summary.
+  win.location.hash = '#rotation';
+  await sleep(50);
+  const prRow = () => [...doc.querySelectorAll('#rot-list li')].filter((li) => li.querySelector('.title')?.textContent === 'New PRs');
+  check('rotation lists New PRs after the whiteboard', prRow().length === 1 &&
+    prRow()[0].previousElementSibling?.querySelector('.title')?.textContent === 'PR whiteboard');
+  check('New PRs row says who it shows', prRow()[0]?.querySelector('.sub').textContent === '5 athletes with PRs in the last 7 days · 40 s per pass',
+    prRow()[0]?.querySelector('.sub').textContent);
+  check('New PRs seconds are per athlete', /s per athlete/.test(prRow()[0]?.querySelector('.secs-wrap.secs').textContent));
+  const screens = doc.querySelectorAll('#pv-strip button').length;
+  check('rotation summary counts the New PRs screens', $('#rot-summary').textContent.startsWith(`${screens} screens`), `${screens}: ${$('#rot-summary').textContent}`);
+  check('rotation tab: no sideways scroll at 390 px', doc.documentElement.scrollWidth <= 390, doc.documentElement.scrollWidth);
+  check('+ New PRs is a real tap target', $('#rot-add-prs').getBoundingClientRect().height >= 44, $('#rot-add-prs').getBoundingClientRect().height);
+  $('#rot-add-prs').click();
+  check('+ New PRs adds a row', prRow().length === 2 && !$('#rot-save').disabled);
+  $('#rot-revert').click();
+  check('discard removes it again', prRow().length === 1);
+
+  // With New PRs switched off, "See it" falls back to the whiteboard page.
+  prRow()[0].querySelector('input[type="checkbox"]').click();
+  check('New PRs switched off, not saved', !prRow()[0].querySelector('input[type="checkbox"]').checked);
+  win.location.hash = '#athletes';
+  await sleep(50);
+  type($('#ath-filter'), 'Jess T');
+  const row3 = [...doc.querySelectorAll('#ath-table tbody tr')].find((tr) => tr.querySelector('.c-name input').value === 'Jess T');
+  type(row3.querySelector('td.num input'), '80');
+  $('#ath-save').click();
+  await until(() => /Saved at/.test($('#ath-state').textContent) && /PR/.test($('#ath-state').textContent));
+  check('save still names the new PR', /New PR: Jess T snatch 80 kg/.test($('#ath-state').textContent), $('#ath-state').textContent);
+  [...doc.querySelectorAll('#ath-state button')].find((b) => /See it/.test(b.textContent))?.click();
   await until(() => /PR whiteboard, page/.test($('#pv-label').textContent));
   const label = $('#pv-label').textContent;
   const pageNo = Number((label.match(/page (\d+)/) || [])[1]) - 1;
   // Board order puts a new athlete last, so Jess is on the last whiteboard page.
   const pages = Number((label.match(/of (\d+)$/) || [])[1]);
-  check('wall tab is open', $('#wall').classList.contains('active'));
-  check('preview is held', /Held/.test($('#pv-timer').textContent), $('#pv-timer').textContent);
-  check('preview holds the page with Jess', pages > 0 && pageNo === pages - 1, label);
+  check('without New PRs, the preview holds the whiteboard page with Jess', pages > 0 && pageNo === pages - 1, label);
+  win.location.hash = '#rotation';
+  await sleep(50);
+  $('#rot-revert').click();
+
+  // Notices: the announcements editor on a phone.
+  win.location.hash = '#notices';
+  await sleep(50);
+  const ann = await import('/announceslides.js');
+  const cards = () => [...doc.querySelectorAll('#ann-list li')];
+  const savePin = async () => {
+    if (await until(() => $('#pin-dialog').open || /Saved at/.test($('#ann-state').textContent)) && $('#pin-dialog').open) {
+      $('#pin-input').value = PIN;
+      $('#pin-form').requestSubmit();
+    }
+    return until(() => /Saved at/.test($('#ann-state').textContent));
+  };
+  // Every LED of a card's preview against renderAnnouncement(). LedView draws each LED's
+  // colour added to a dark grey (22) at the dot's centre, 3 px a dot.
+  const ledMismatches = (li, want) => {
+    const c = li.querySelector('canvas.led');
+    const got = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let bad = 0;
+    for (let y = 0; y < 96; y++) {
+      for (let x = 0; x < 256; x++) {
+        const g = ((3 * y + 1) * c.width + 3 * x + 1) * 4;
+        const w = (y * 256 + x) * 4;
+        for (let k = 0; k < 3; k++) if (got[g + k] !== Math.min(255, want[w + k] + 22)) bad++;
+      }
+    }
+    return bad;
+  };
+  check('notices tab lists the announcements', cards().length === 5, cards().length);
+  check('notices tab: no sideways scroll at 390 px', doc.documentElement.scrollWidth <= 390, doc.documentElement.scrollWidth);
+  const navLinks = [...doc.querySelectorAll('#tabs a')];
+  const navTops = new Set(navLinks.map((a) => Math.round(a.getBoundingClientRect().top)));
+  check('six tabs in one row on a phone, none cut off', navLinks.length === 6 && navTops.size === 1 &&
+    navLinks.every((a) => a.scrollWidth <= a.clientWidth + 1 && a.getBoundingClientRect().height >= 44),
+    navLinks.map((a) => `${a.textContent} ${a.scrollWidth}/${a.clientWidth}`).join('; '));
+  const smallAnn = [...doc.querySelectorAll('#notices button, #notices input:not([type=checkbox]), #notices textarea')]
+    .filter((e) => e.offsetParent && e.getBoundingClientRect().height < 44)
+    .map((e) => `${e.tagName} ${e.getAttribute('aria-label') ?? e.textContent.trim().slice(0, 12)}`);
+  check('notices tap targets at least 44 px', smallAnn.length === 0, smallAnn.slice(0, 4).join('; '));
+  const statuses = cards().map((li) => li.querySelector('.ann-status').textContent);
+  check('each card says whether it shows today', statuses[0] === 'Showing today' && /^Showing today, until /.test(statuses[2]) &&
+    /^Ended /.test(statuses[3]) && statuses[4] === 'Off, so not shown', statuses.join(' | '));
+  const firstAnn = cards()[0];
+  const ta = firstAnn.querySelector('textarea');
+  check('the preview is exactly what the wall draws', ledMismatches(firstAnn, ann.renderAnnouncement({ text: 'Welcome to The Strength Tank', index: 0, count: 3 })) === 0);
+  type(ta, 'PR day Friday');
+  check('the preview follows the typing', ledMismatches(firstAnn, ann.renderAnnouncement({ text: 'PR day Friday', index: 0, count: 3 })) === 0);
+  check('character count', firstAnn.querySelector('.ann-count').textContent === '13 / 200', firstAnn.querySelector('.ann-count').textContent);
+  check('an edit marks the notices tab', $('#tabs a[href="#notices"]').classList.contains('dirty') && /Not saved yet/.test($('#ann-state').textContent));
+  type(ta, 'Don\u2019t miss \u201cFight Gone Bad\u201d \u2014 \ud83d\udcaa');
+  const warnLine = firstAnn.querySelector('.ann-warn');
+  check('warns which characters will show as ?', !warnLine.hidden && warnLine.querySelector('.ann-chars')?.textContent === '\u2019 \u201c \u201d \u2014 \ud83d\udcaa', warnLine.textContent);
+  const fix = [...firstAnn.querySelectorAll('.ann-warn button')].find((b) => /plain characters/.test(b.textContent));
+  check('offers to replace them with plain characters', fix);
+  fix?.click();
+  check('quotes and dash replaced, the emoji still flagged', ta.value === 'Don\'t miss "Fight Gone Bad" - \ud83d\udcaa' &&
+    firstAnn.querySelector('.ann-chars')?.textContent === '\ud83d\udcaa' && !firstAnn.querySelector('.ann-warn button'), ta.value);
+  type(ta, 'x'.repeat(201));
+  check('over 200 characters is flagged', firstAnn.querySelector('.ann-count').classList.contains('bad') && ta.classList.contains('invalid'));
+  $('#ann-save').click();
+  await sleep(50);
+  check('an invalid announcement is not sent', /Not saved/.test($('#ann-state').textContent) &&
+    (await (await fetch('/api/announcements')).json()).announcements[0].text === 'Welcome to The Strength Tank', $('#ann-state').textContent);
+  type(ta, 'Welcome to The Strength Tank');
+  check('typing it back leaves nothing to save', $('#ann-save').disabled && !$('#tabs a[href="#notices"]').classList.contains('dirty'));
+
+  $('#ann-add').click();
+  const added = cards()[5];
+  check('add puts a new card at the end, ready to type', cards().length === 6 && doc.activeElement === added?.querySelector('textarea'));
+  type(added.querySelector('textarea'), '  Open gym\nSunday 9 to 11  ');
+  const wallDay = (await (await fetch('/api/status')).json()).local_date;
+  for (const input of added.querySelectorAll('input[type="date"]')) {
+    input.value = wallDay;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  check('dated today: showing, until today', /^Showing today, until /.test(added.querySelector('.ann-status').textContent), added.querySelector('.ann-status').textContent);
+  added.querySelector('button[title="Move up"]').click();
+  check('moved up one place', cards()[4].querySelector('textarea').value.startsWith('  Open gym'));
+  check('the live preview has 4 dots now', ledMismatches(cards()[4], ann.renderAnnouncement({ text: 'Open gym\nSunday 9 to 11', index: 3, count: 4 })) === 0);
+  $('#ann-save').click();
+  await savePin();
+  const savedAnn = (await (await fetch('/api/announcements')).json()).announcements;
+  check('saved on the wall, trimmed, with its dates and place', savedAnn.length === 6 && savedAnn[4].text === 'Open gym\nSunday 9 to 11' &&
+    savedAnn[4].start_date === wallDay && savedAnn[4].end_date === wallDay && savedAnn[4].enabled === true, JSON.stringify(savedAnn[4]));
+  check('save clears the tab marker', !$('#tabs a[href="#notices"]').classList.contains('dirty'));
+
+  win.location.hash = '#wall';
+  await sleep(50);
+  await until(() => [...doc.querySelectorAll('#pv-strip button')].filter((b) => /^Announcement/.test(b.title)).length === 4);
+  const annThumbs = [...doc.querySelectorAll('#pv-strip button')].filter((b) => /^Announcement/.test(b.title));
+  check('screen strip has one screen per announcement showing today', annThumbs.map((b) => b.title).join() ===
+    'Announcement 1 of 4,Announcement 2 of 4,Announcement 3 of 4,Announcement 4 of 4', annThumbs.map((b) => b.title).join());
+  annThumbs[3]?.click();
+  await until(() => /Announcement 4 of 4$/.test($('#pv-label').textContent));
+  check('the preview holds an announcement', /: Announcement 4 of 4$/.test($('#pv-label').textContent), $('#pv-label').textContent);
+
+  win.location.hash = '#rotation';
+  await sleep(50);
+  const annRow = () => [...doc.querySelectorAll('#rot-list li')].filter((li) => li.querySelector('.title')?.textContent === 'Announcements');
+  check('rotation row says how many show today', annRow()[0]?.querySelector('.sub').textContent === '4 announcements showing today · 32 s per pass',
+    annRow()[0]?.querySelector('.sub').textContent);
+  check('announcement seconds are per announcement', /s per announcement/.test(annRow()[0]?.querySelector('.secs-wrap.secs').textContent));
+  const stripCount = doc.querySelectorAll('#pv-strip button').length;
+  check('rotation summary counts the announcement screens', $('#rot-summary').textContent.startsWith(`${stripCount} screens`), `${stripCount}: ${$('#rot-summary').textContent}`);
+  check('+ Announcements is a real tap target', $('#rot-add-ann').getBoundingClientRect().height >= 44);
+  $('#rot-add-ann').click();
+  check('+ Announcements adds a row', annRow().length === 2 && !$('#rot-save').disabled);
+  $('#rot-revert').click();
+  check('discard removes it again', annRow().length === 1);
+
+  win.location.hash = '#notices';
+  await sleep(50);
+  for (const box of doc.querySelectorAll('#ann-list input[type="checkbox"]')) if (box.checked) box.click();
+  win.location.hash = '#rotation';
+  await sleep(50);
+  check('none showing: the row says it is skipped', annRow()[0]?.querySelector('.sub').textContent === 'None showing today, so this is skipped',
+    annRow()[0]?.querySelector('.sub').textContent);
+  win.location.hash = '#notices';
+  await sleep(50);
+  $('#ann-revert').click();
+  check('discard turns them back on', cards().filter((li) => li.querySelector('input[type="checkbox"]').checked).length === 5);
+
+  // Someone else saves the announcements first: the edit stays and "Load the latest" is offered.
+  const latestAnn = await (await fetch('/api/announcements')).json();
+  await fetch('/api/announcements', { method: 'PUT', body: JSON.stringify(latestAnn), headers: { 'Content-Type': 'application/json', 'X-Admin-Pin': PIN } });
+  type(cards()[1].querySelector('textarea'), 'Changed on this phone');
+  $('#ann-save').click();
+  await until(() => /someone else saved/.test($('#ann-state').textContent));
+  check('stale announcements save keeps the edit', /someone else saved/.test($('#ann-state').textContent) &&
+    cards()[1].querySelector('textarea').value === 'Changed on this phone', $('#ann-state').textContent);
+  win.confirm = () => true;
+  [...doc.querySelectorAll('#ann-state button')].find((b) => /Load the latest/.test(b.textContent))?.click();
+  await until(() => /Loaded the latest/.test($('#ann-state').textContent));
+  check('load the latest brings the wall\'s list back', cards()[1].querySelector('textarea').value === 'OPEN GYM\nSaturday 8 to 12' && $('#ann-save').disabled);
 
   // Invalid entry: save is refused, focus lands on the bad box.
   win.location.hash = '#athletes';
@@ -179,6 +356,138 @@ async function run() {
   $2('#ig-find').click();
   await until(() => $2('#ig-accounts button'), 8000);
   check('find it lists the account', /@thestrengthtank/.test($2('#ig-accounts').textContent), $2('#ig-accounts').textContent);
+
+  // Schedule card on a phone: fits, validates inline, copies Monday, saves.
+  f.contentWindow.location.hash = '#settings';
+  await sleep(50);
+  const fire = (el, ev = 'input') => el.dispatchEvent(new Event(ev, { bubbles: true }));
+  const dayInputs = (d) => d2.querySelectorAll(`#sch-day-${d} input[type="time"]`);
+  const card = $2('#sch-card');
+  check('schedule card has a row per day', d2.querySelectorAll('#sch-days .sched-day').length === 7);
+  const wide = [...d2.querySelectorAll('#settings *')].filter((e) => e.offsetParent && e.getBoundingClientRect().right > 390)
+    .map((e) => `${e.tagName}${e.id ? '#' + e.id : ''}.${e.className} ${Math.round(e.getBoundingClientRect().right)}`);
+  check('settings tab: no sideways scroll at 390 px', d2.documentElement.scrollWidth <= 390 && card.getBoundingClientRect().right <= 390,
+    `${d2.documentElement.scrollWidth}: ${wide.slice(0, 4).join('; ')}`);
+  const range = d2.querySelector('#sch-day-mon .range');
+  const [r0, r1] = [...range.querySelectorAll('input')].map((i) => i.getBoundingClientRect());
+  check('a time range sits on one line', Math.abs(r0.top - r1.top) < 2 && range.getBoundingClientRect().right <= 390, `${r0.top} ${r1.top}`);
+  const smallSched = [...card.querySelectorAll('button, input:not([type=checkbox])')]
+    .filter((e) => e.offsetParent && e.getBoundingClientRect().height < 44)
+    .map((e) => `${e.tagName} ${e.getAttribute('aria-label') ?? e.textContent.trim().slice(0, 12)}`);
+  check('schedule tap targets at least 44 px', smallSched.length === 0, smallSched.slice(0, 4).join('; '));
+  $2('#sch-enabled').click();
+  dayInputs('tue')[1].value = '04:00';
+  fire(dayInputs('tue')[1]);
+  check('end before start shows under the day', !$2('#sch-day-tue .day-error').hidden &&
+    $2('#sch-day-tue .day-error').textContent === 'Tuesday: a time range must end after it starts', $2('#sch-day-tue .day-error').textContent);
+  check('the bad times are outlined', dayInputs('tue')[1].classList.contains('invalid') && dayInputs('tue')[1].getAttribute('aria-invalid') === 'true');
+  check('schedule edit marks the settings tab', $2('#tabs a[href="#settings"]').classList.contains('dirty') && $2('#set-save').disabled);
+  $2('#sch-save').click();
+  await sleep(50);
+  check('an invalid schedule is not sent', /Not saved: Tuesday/.test($2('#sch-state').textContent), $2('#sch-state').textContent);
+  check('focus goes to the bad time', d2.activeElement === dayInputs('tue')[0] || d2.activeElement === dayInputs('tue')[1]);
+  check('the wall still has no schedule', (await (await fetch('/api/settings')).json()).schedule.enabled === false);
+  dayInputs('tue')[1].value = '21:00';
+  fire(dayInputs('tue')[1]);
+  check('fixing it clears the error', $2('#sch-day-tue .day-error').hidden);
+  dayInputs('mon')[0].value = '06:00';
+  fire(dayInputs('mon')[0]);
+  $2('#sch-day-mon button.add').click(); // + Second time
+  check('a second time is added after the first', dayInputs('mon').length === 4 && dayInputs('mon')[2].value === '22:00', dayInputs('mon')[2]?.value);
+  dayInputs('mon')[1].value = '12:00';
+  fire(dayInputs('mon')[1]);
+  dayInputs('mon')[2].value = '15:00';
+  fire(dayInputs('mon')[2]);
+  $2('#sch-copy-weekdays').click();
+  check('copy Monday to weekdays', dayInputs('fri').length === 4 && dayInputs('fri')[0].value === '06:00' && dayInputs('sat').length === 2);
+  d2.querySelector('#sch-day-sun input[type="checkbox"]').click();
+  check('a day switched off says so', /Off all day/.test($2('#sch-day-sun').textContent) && dayInputs('sun').length === 0);
+  dayInputs('sat')[1].value = '00:00'; // an end of midnight
+  fire(dayInputs('sat')[1]);
+  check('an end of midnight is fine', $2('#sch-day-sat .day-error').hidden);
+  $2('#sch-save').click();
+  if (await until(() => $2('#pin-dialog').open || /Saved at/.test($2('#sch-state').textContent)) && $2('#pin-dialog').open) {
+    $2('#pin-input').value = PIN;
+    $2('#pin-form').requestSubmit();
+  }
+  await until(() => /Saved at/.test($2('#sch-state').textContent));
+  const sch = (await (await fetch('/api/settings')).json()).schedule;
+  check('schedule saved on the wall', sch.enabled && sch.days.fri.length === 2 && sch.days.fri[1].start === '15:00' &&
+    sch.days.sun.length === 0 && sch.days.sat[0].end === '24:00', JSON.stringify(sch).slice(0, 160));
+  check('saved schedule clears the tab marker', !$2('#tabs a[href="#settings"]').classList.contains('dirty'));
+  $2('#sch-copy-all').click();
+  check('copy Monday to every day', dayInputs('sun').length === 4 && !$2('#sch-save').disabled);
+  $2('#sch-revert').click();
+  check('discard restores the schedule', dayInputs('sun').length === 0 && $2('#sch-save').disabled);
+
+  // Power supplies: the estimate follows the setting, and it saves with the other settings.
+  const powerNote = () => $2('#set-power').textContent;
+  check('power note starts with two 18 A supplies', /per supply/.test(powerNote()) && /rated 18 A/.test(powerNote()), powerNote());
+  $2('#set-supplies').value = '1';
+  fire($2('#set-supplies'), 'change');
+  $2('#set-rated').value = '80';
+  fire($2('#set-rated'));
+  check('one 80 A supply: no dimming for all-white', /on the supply/.test(powerNote()) && /rated 80 A/.test(powerNote()) &&
+    /under 68\.0 A/.test(powerNote()) && /full brightness/.test(powerNote()), powerNote());
+  $2('#set-budget').value = '99';
+  fire($2('#set-budget'));
+  check('budget over 95 is outlined', $2('#set-budget').classList.contains('invalid'));
+  $2('#set-save').click();
+  check('a bad budget blocks the save', /Budget must be/.test($2('#toast').textContent), $2('#toast').textContent);
+  $2('#set-budget').value = '85';
+  fire($2('#set-budget'));
+  $2('#set-save').click();
+  await until(() => /Saved at/.test($2('#set-state').textContent));
+  const power = (await (await fetch('/api/settings')).json()).power;
+  check('power saved on the wall', power.supplies === 1 && power.rated_a === 80 && power.budget_pct === 85, JSON.stringify(power));
+  check('saving settings keeps the schedule', (await (await fetch('/api/settings')).json()).schedule.days.sun.length === 0);
+
+  // Wall tab: the real wall's on/off state in words, and turning it on and off by hand.
+  // Times come from the wall's zone (set above), read with Intl so they match the mock's clock.
+  const tz = (await (await fetch('/api/settings')).json()).timezone;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', hourCycle: 'h23' })
+    .formatToParts(new Date()).map((p) => [p.type, p.value]));
+  const keys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const todayIx = names.indexOf(parts.weekday);
+  const empty = Object.fromEntries(keys.map((k) => [k, []]));
+  const putSchedule = (days, enabled = true) => put('/api/settings', { schedule: { enabled, days: { ...empty, ...days } } });
+  const line = () => $2('#sched-line').textContent;
+  const showWall = async (want) => {
+    f.contentWindow.location.hash = '#settings';
+    await sleep(30);
+    f.contentWindow.location.hash = '#wall'; // showing the tab asks the wall again
+    return until(() => want.test(line()));
+  };
+  await putSchedule({ [keys[todayIx]]: [{ start: '00:00', end: '24:00' }] });
+  await showWall(/^On until/);
+  check('on all day today: on until tomorrow 12:00 am', line() === `On until ${names[(todayIx + 1) % 7]} 12:00 am`, line());
+  check('turn on now is greyed while on', $2('[data-control="wake"]').disabled && !$2('[data-control="sleep"]').disabled);
+  if (Number(parts.hour) < 22) {
+    const h = Number(parts.hour) + 1;
+    await putSchedule({ [keys[todayIx]]: [{ start: '00:00', end: `${String(h).padStart(2, '0')}:00` }] });
+    await showWall(/^On until \d/);
+    check('a change later today shows only the time', line() === `On until ${h % 12 || 12}:00 ${h < 12 ? 'am' : 'pm'}`, line());
+  }
+  await putSchedule({ [keys[(todayIx + 1) % 7]]: [{ start: '05:00', end: '21:00' }] });
+  await showWall(/^Off until/);
+  check('off until tomorrow morning (schedule)', line() === `Off until ${names[(todayIx + 1) % 7]} 5:00 am (schedule)`, line());
+  check('preview says the real wall is off', !$2('#pv-wall-off').hidden && /real wall is off right now \(schedule\)/.test($2('#pv-wall-off').textContent), $2('#pv-wall-off').textContent);
+  check('the preview keeps playing', $2('#pv-play').textContent === 'Pause' && /\S/.test($2('#pv-label').textContent));
+  $2('[data-control="wake"]').click();
+  await until(() => /turned on by hand/.test(line()));
+  check('turn on now: on by hand until the schedule turns it off', line() === `On until ${names[(todayIx + 1) % 7]} 9:00 pm (turned on by hand)`, line());
+  check('preview notice gone once on', $2('#pv-wall-off').hidden);
+  await putSchedule({}, false);
+  await showWall(/no schedule set/);
+  check('no schedule: always on', line() === 'On (no schedule set)', line());
+  $2('[data-control="sleep"]').click();
+  await until(() => /^Off/.test(line()));
+  check('turn off now without a schedule lasts until turned on', line() === 'Off (turned off by hand, until you turn it on)', line());
+  check('turn off now is greyed while off', $2('[data-control="sleep"]').disabled && !$2('[data-control="wake"]').disabled);
+  $2('[data-control="wake"]').click();
+  await until(() => /no schedule set/.test(line()));
+  check('turn on now brings it back', line() === 'On (no schedule set)', line());
 
   // Wall tab: diagnostics and what's showing.
   f.contentWindow.location.hash = '#wall';

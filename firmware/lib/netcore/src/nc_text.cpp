@@ -156,6 +156,16 @@ bool isPin(const std::string& s) { return digits(s, 6, 12); }
 bool isAccountId(const std::string& s) { return digits(s, 0, 32); }
 bool isGeneration(const std::string& s) { return digits(s, 1, 9); }
 
+bool isCalendarDate(const std::string& s) {
+  if (s.size() != 10 || s[4] != '-' || s[7] != '-') return false;
+  if (!digits(s.substr(0, 4), 4, 4) || !digits(s.substr(5, 2), 2, 2) || !digits(s.substr(8, 2), 2, 2)) return false;
+  const int y = atoi(s.substr(0, 4).c_str()), m = atoi(s.substr(5, 2).c_str()), d = atoi(s.substr(8, 2).c_str());
+  if (y < 1 || m < 1 || m > 12 || d < 1) return false;
+  static const int kDays[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  const bool leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+  return d <= kDays[m - 1] + (m == 2 && leap ? 1 : 0);
+}
+
 bool isAccessToken(const std::string& s) {
   if (s.size() > 1024) return false;
   for (char c : s) {
