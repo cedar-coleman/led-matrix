@@ -44,25 +44,26 @@ are assumptions that a hardware spike has to confirm before the design is final.
 
 ### Panel arrangement and chain order
 
-One HUB75 output feeds a single 12-panel serpentine chain. Rows 1 and 3 run left to right
-and mount upright. Row 2 runs right to left and mounts **upside down**, so every
-row-to-row hop uses a short ribbon cable instead of one that crosses the whole wall.
+One HUB75 output feeds a single 12-panel serpentine chain. The controller plugs onto the
+**front top-right** panel; rows 1 and 3 mount upright and run right to left, row 2 mounts
+**upside down** and runs left to right, so every row-to-row hop uses a short ribbon. Seen
+from the front:
 
 ```
             256 px (4 panels x 64)
-   ┌────────┬────────┬────────┬────────┐
-   │   1 →  │   2 →  │   3 →  │   4 →  │──┐   row 1, upright
-   ├────────┼────────┼────────┼────────┤  │
-┌──│ ← 8 ⟲  │ ← 7 ⟲  │ ← 6 ⟲  │ ← 5 ⟲  │◄─┘   row 2, rotated 180°
-│  ├────────┼────────┼────────┼────────┤        96 px (3 x 32)
-└─►│   9 →  │  10 →  │  11 →  │  12 →  │      row 3, upright
-   └────────┴────────┴────────┴────────┘
-    ▲
-    ESP32-S3 HUB75 out → panel 1 input
+     ┌────────┬────────┬────────┬────────┐
+  ┌──│ ← 4    │ ← 3    │ ← 2    │ ← 1    │◄── controller   row 1, upright
+  │  ├────────┼────────┼────────┼────────┤
+  └─►│   5 →  │   6 →  │   7 →  │   8 →  │──┐              row 2, rotated 180°
+     ├────────┼────────┼────────┼────────┤  │              96 px (3 x 32)
+     │ ← 12   │ ← 11   │ ← 10   │ ← 9    │◄─┘              row 3, upright
+     └────────┴────────┴────────┴────────┘
 ```
 
-In firmware, `VirtualMatrixPanel` with `CHAIN_TOP_LEFT_DOWN` maps this to one 256x96
-canvas, so the rest of the code never deals with panel coordinates.
+This is the HUB75 library's `CHAIN_TOP_RIGHT_DOWN` (driver x 0 is the far end of the chain,
+panel 12). The firmware maps it in `firmware/lib/render/src/panel_map.h`, tested pixel for
+pixel against the library's formula, so the rest of the code never deals with panel
+coordinates. Wiring, with drawings: [`docs/assembly-guide.md`](docs/assembly-guide.md).
 
 ### Power (the part most likely to go wrong)
 
@@ -529,9 +530,11 @@ the download, only HTTP errors caught) and confirming it failed.
    measure a **mid-grey** frame next to full white, to see how far current is from linear in
    pixel value (the power model assumes linear).
 6. Download one of @thestrengthtank's post images on the board and decode it with `JPEGDEC`.
-7. **Level check:** measure the logic level at the first panel's 74HC245 input. With the
-   245 at 5 V VCC, its VIH is 3.5 V, above the ESP32's 3.3 V output. If the first panel
-   misreads, add a level shifter (for example a 74HCT245) between the board and panel 1.
+7. **Level check:** Waveshare's schematic shows the board drives the panel through its own
+   two SN74HC245 buffers powered at 5 V, so panel 1 gets 5 V signals. Those buffers' own
+   inputs see the ESP32's 3.3 V against a 3.5 V threshold, which is Waveshare's design and
+   what their examples run on. If the first panel shows noise or wrong colours, compare with
+   the Adafruit MatrixPortal S3 before changing anything.
 8. **LittleFS above 16 MB:** format and use a LittleFS partition placed above the first
    16 MB of the octal flash, and confirm reads and writes there while the display runs.
 9. **TLS under load:** complete an HTTPS handshake to graph.facebook.com while the display

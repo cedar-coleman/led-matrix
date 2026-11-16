@@ -58,9 +58,10 @@ void renderTestPattern(Surface& s) {
       s.rect(ax, y0 + 10, ax + 1, y0 + 25, Rgb{255, 255, 0});
     }
   }
-  // The board's corner: a red pixel block where chain panel 1 starts (top left), so a
-  // chain that starts at the wrong end is obvious even before reading numbers.
-  s.rect(1, 1, 3, 3, Rgb{255, 0, 0});
+  // The board's corner: a red pixel block in panel 1's outer corner (front top-right, where
+  // the controller plugs in), so a chain that starts at the wrong end is obvious even before
+  // reading numbers.
+  s.rect(W - 4, 1, W - 2, 3, Rgb{255, 0, 0});
 }
 
 }  // namespace render

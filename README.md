@@ -50,8 +50,9 @@ Deleting both undoes the install.
 
 ## Bring-up (Phase 0, in this order)
 
-1. Panel order and orientation: flash the test pattern and check each panel shows its chain
-   number (1 top left) with the arrow pointing up.
+1. Assemble and wire as in the [assembly guide](docs/assembly-guide.md). Then flash the test
+   pattern and check each panel shows its chain number with the arrow pointing up: panel 1
+   (with the controller) at the front top-right, see the guide's section 2.
    `PLATFORMIO_BUILD_FLAGS="-DWALL_TEST_PATTERN" ../.tools/pio-venv/bin/pio run -e display_dev -t upload`
 2. If the panels stay blank or noisy with the default driver, add `-DWALL_DRIVER_FM6126A`.
 3. If the board boot-loops, change `board_build.arduino.memory_type` in `platformio.ini`
@@ -65,8 +66,8 @@ Deleting both undoes the install.
 5. Note the refresh rate the display prints at boot, and film the wall with a phone. Expect
    some banding on camera: a 768-pixel chain on one output can't refresh fast enough for
    phone cameras. Tell the gym before mounting.
-6. Check the 3.3 V signal into the first panel's 74HC245 (it wants 3.5 V at 5 V supply). Keep
-   that first ribbon short, or add a 74HCT245.
+6. The board level-shifts to 5 V on its own (two SN74HC245s) and plugs straight onto panel 1,
+   so there's no first ribbon. If panel 1 shows noise, see `design.md` section 10, item 7.
 7. The rest of the list (TLS with the display running, RTC, LittleFS above 16 MB, OTA
    rollback, Instagram JPEGs, reset behaviour) is in `design.md` section 10.
 
@@ -91,6 +92,7 @@ controller into programming mode instead).
 | Path | What |
 | --- | --- |
 | `design.md` | Hardware, power, memory, architecture, Instagram setup, build plan |
+| `docs/assembly-guide.md` | Panel layout and chain order, data and power wiring drawings, controller connection, mounting and cooling |
 | `docs/power-wiring-guide.md` | Wiring the panels to one or two supplies, the current measurements, and the "Power supplies" setting |
 | `API.md` | The exact REST contract the firmware and mock implement |
 | `web/` | The console. `layout.js`, `igslides.js`, `prslides.js`, `announceslides.js`, `power.js` are the on-wall spec the firmware ports |

@@ -1,10 +1,11 @@
 // Power estimate for a 256x96 frame on the wall's supplies (settings.power, API.md 7.3).
 //
 // The default is today's wiring: two Mean Well LRS-100-5 supplies (5 V, 18 A each), supply
-// A on chain panels 1-6 and supply B on panels 7-12. With the serpentine chain (row 2
-// mounted upside down, running right to left) that is:
-//   A: the top row, plus the right half of the middle row
-//   B: the left half of the middle row, plus the bottom row
+// A on chain panels 1-6 and supply B on panels 7-12. With the chain starting at the front
+// top-right panel and row 2 upside down running left to right (firmware panel_map.h),
+// seen from the front that is:
+//   A: the top row, plus the left half of the middle row
+//   B: the right half of the middle row, plus the bottom row
 // With one supply (for example a Mean Well UHP-500-5) all twelve panels share one budget.
 //
 // Per-panel full-white current comes from the seller spec: 480 W/m2 x 0.0512 m2 = 24.6 W,
@@ -42,7 +43,7 @@ export function estimateSupplyAmps(rgba, brightnessPct, power = DEFAULT_POWER) {
     for (let x = 0; x < W; x++) {
       const o = (y * W + x) * 4;
       const load = rgba[o] + rgba[o + 1] + rgba[o + 2];
-      const onA = y < 32 || (y < 64 && x >= 128);
+      const onA = y < 32 || (y < 64 && x < 128);
       if (onA) a += load;
       else b += load;
     }

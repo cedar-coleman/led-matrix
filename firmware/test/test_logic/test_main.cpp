@@ -37,26 +37,34 @@ void test_panel_map_is_a_bijection() {
   TEST_ASSERT_EQUAL(W * H, seen.size());
 }
 
+// The HUB75 library's own CHAIN_TOP_RIGHT_DOWN mapping (ESP32-VirtualMatrixPanel-I2S-DMA.h,
+// v3.1.0), copied as the oracle: the board on the front top-right panel, row 2 upside down.
+static ChainXY libraryTopRightDown(int virt_x, int virt_y) {
+  const int virtualResX = kPanelCols * kPanelW;
+  const int dmaResX = kPanelW * kPanelRows * kPanelCols - 1;
+  const int row = virt_y / kPanelH;
+  if (row % 2 == 1) {
+    return {static_cast<int16_t>(dmaResX - virt_x - row * virtualResX), static_cast<int16_t>(kPanelH - 1 - (virt_y % kPanelH))};
+  }
+  return {static_cast<int16_t>((kPanelRows - (row + 1)) * virtualResX + virt_x), static_cast<int16_t>(virt_y % kPanelH)};
+}
+
 void test_panel_map_serpentine() {
-  // Row 1: panel 1 at the top left, upright.
-  TEST_ASSERT_EQUAL(0, chainXY(0, 0).x);
-  TEST_ASSERT_EQUAL(0, chainXY(0, 0).y);
-  TEST_ASSERT_EQUAL(3 * 64 + 63, chainXY(255, 31).x);
-  TEST_ASSERT_EQUAL(31, chainXY(255, 31).y);
-  // Row 2 runs right to left upside down: the wall's right end is panel 5, and its
-  // top-right pixel is that panel's own bottom-left (x 0, y 31) because it is rotated.
-  TEST_ASSERT_EQUAL(4 * 64 + 0, chainXY(255, 32).x);
-  TEST_ASSERT_EQUAL(31, chainXY(255, 32).y);
-  TEST_ASSERT_EQUAL(7 * 64 + 63, chainXY(0, 32).x);
-  TEST_ASSERT_EQUAL(31, chainXY(0, 32).y);
-  TEST_ASSERT_EQUAL(7 * 64 + 0, chainXY(63, 63).x);
-  TEST_ASSERT_EQUAL(0, chainXY(63, 63).y);
-  // Row 3: panel 9 at the bottom left, upright.
-  TEST_ASSERT_EQUAL(8 * 64, chainXY(0, 64).x);
+  // Every pixel lands where the library's top-right serpentine puts it.
+  for (int y = 0; y < H; y++) {
+    for (int x = 0; x < W; x++) {
+      const ChainXY ours = chainXY(x, y), lib = libraryTopRightDown(x, y);
+      TEST_ASSERT_EQUAL_MESSAGE(lib.x, ours.x, "driver x");
+      TEST_ASSERT_EQUAL_MESSAGE(lib.y, ours.y, "driver y");
+    }
+  }
+  // The board's panel (top right, upright) gets the last 64 driver columns.
+  TEST_ASSERT_EQUAL(11 * 64 + 63, chainXY(255, 31).x);
+  // The far end of the chain (bottom left, upright) gets driver x 0.
+  TEST_ASSERT_EQUAL(0, chainXY(0, 64).x);
   TEST_ASSERT_EQUAL(0, chainXY(0, 64).y);
-  TEST_ASSERT_EQUAL(11 * 64 + 63, chainXY(255, 95).x);
-  // Chain numbers per grid cell, as drawn in design.md section 2.
-  const int expected[3][4] = {{0, 1, 2, 3}, {7, 6, 5, 4}, {8, 9, 10, 11}};
+  // Chain numbers per grid cell seen from the front, as in docs/assembly-guide.md.
+  const int expected[3][4] = {{3, 2, 1, 0}, {4, 5, 6, 7}, {11, 10, 9, 8}};
   for (int r = 0; r < 3; r++) {
     for (int c = 0; c < 4; c++) TEST_ASSERT_EQUAL(expected[r][c], chainIndex(c, r));
   }
@@ -386,6 +394,11 @@ void test_test_pattern_marks_every_panel() {
   std::unique_ptr<uint8_t[]> buf(new uint8_t[kFrameBytes]);
   Surface s(buf.get());
   renderTestPattern(s);
+  // The red board marker sits in panel 1's outer corner: front top-right, not top-left.
+  const uint8_t* tr = buf.get() + (2 * W + (W - 3)) * 3;
+  TEST_ASSERT_TRUE(tr[0] == 255 && tr[1] == 0 && tr[2] == 0);
+  const uint8_t* tl = buf.get() + (2 * W + 2) * 3;
+  TEST_ASSERT_FALSE(tl[0] == 255 && tl[1] == 0 && tl[2] == 0);
   for (int r = 0; r < kPanelRows; r++) {
     for (int c = 0; c < kPanelCols; c++) {
       const int x0 = c * kPanelW, y0 = r * kPanelH;

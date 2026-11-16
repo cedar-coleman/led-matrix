@@ -11,21 +11,23 @@ you move to one.
 
 ## 1. Which panel is which
 
-The data chain snakes across the wall. Row 2 is mounted upside down and runs right to left.
-Numbers are chain positions, as seen from the front:
+The full layout, with drawings, is in [`assembly-guide.md`](assembly-guide.md) section 2. In
+short, numbered by chain position (1 = the panel the controller plugs into), **seen from the
+front**:
 
 ```
           col 1     col 2     col 3     col 4
-row 1   [  1  ] → [  2  ] → [  3  ] → [  4  ]
-row 2   [  8  ] ← [  7  ] ← [  6  ] ← [  5  ]      (mounted upside down)
-row 3   [  9  ] → [ 10  ] → [ 11  ] → [ 12  ]
+row 1   [  4  ] ← [  3  ] ← [  2  ] ← [  1  ]   upright      (controller on panel 1)
+row 2   [  5  ] → [  6  ] → [  7  ] → [  8  ]   upside down
+row 3   [ 12  ] ← [ 11  ] ← [ 10  ] ← [  9  ]   upright
 ```
 
-With two supplies, **supply A powers panels 1 to 6 and supply B powers panels 7 to 12**:
+With two supplies, **supply A powers panels 1 to 6 and supply B powers panels 7 to 12**,
+seen from the front:
 
 ```
 row 1   [ A ] [ A ] [ A ] [ A ]
-row 2   [ B ] [ B ] [ A ] [ A ]
+row 2   [ A ] [ A ] [ B ] [ B ]
 row 3   [ B ] [ B ] [ B ] [ B ]
 ```
 
@@ -46,100 +48,58 @@ With the LRS-100-5s, all-white can't reach 100%. The firmware dims any frame tha
 
 ## 3. Wiring with the two LRS-100-5 supplies
 
+![Rear wiring, two supplies](diagrams/wall-rear-two-supplies.svg)
+
 ### Parts
 
 | Part | Quantity | Notes |
 | --- | --- | --- |
 | Mean Well LRS-100-5 | 2 | You have these |
-| 3-prong power cord (18 AWG or heavier) | 2 | Or one cord into a fused IEC inlet per supply |
-| Switched power strip with breaker | 1 | Both supplies plug in here: one switch for the wall |
-| 14 AWG stranded wire, red and black | about 3 m each | Supply to each branch |
-| Inline blade fuse holder, 14 AWG, with 15 A fuse | 4 | One per branch of 3 panels |
-| Lever connectors rated 20 A (e.g. WAGO 221 series), 3-port and 5-port | about 8 | To split a branch to 3 panel pigtails |
+| IEC inlet with switch and fuse, plus a 3-prong cord | 1 or 2 | Or one switched power strip; one switch for the whole wall |
+| Bus bar pair (+ and GND), 6 screw positions, insulated mounts | 2 | One pair per supply; the panels' fork terminals screw on here |
+| 14 AWG stranded wire, red and black | about 3 m each | Supply to its bus bars (12 AWG if the run is over 1 m) |
+| Inline blade fuse holder, 14 AWG, with 20 A fuse | 2 | On each supply's +V feed |
+| 14 AWG jumper wire | 30 cm | Joins the two GND bus bars |
+| 2 A inline fuse, 20 AWG red/black, two M3 ring terminals | 1 set | Controller power lead |
 | Ring or fork terminals for the supply screws, plus ferrules | 1 pack | No bare stranded wire under a screw |
-| 14 AWG jumper wire | 20 cm | Ties the two supplies' −V together |
-| Terminal cover or small enclosure | 2 | Covers the AC terminals |
+| Terminal covers (bought or printed) | 2 | Over the AC terminals |
 | Multimeter | 1 | DC volts |
 | **DC-capable** clamp meter | 1 | Many clamp meters measure AC only. Check it says "DC A" |
 
-The panels' own power pigtails (red and black, usually one cable powers two panels) connect
-the last stretch to each panel. Use one pigtail lead per panel; don't daisy-chain more than
-the cable was made for.
+The panels' own power leads (4-pin plug on one end, red and black fork terminals on the
+other) connect each panel to its bus bars. If yours are splitters with two plugs on one
+lead, one lead powers two neighbouring panels: pair them 1+2, 3+4, 5+6, 7+8, 9+10, 11+12.
 
 ### LRS-100-5 terminals
 
-Left to right on the terminal block (confirm against the label on your units):
+From Mean Well's datasheet (case 238A), left to right on the terminal block:
 
 ```
- [ L ] [ N ] [ ⏚ ] [ -V ] [ -V ] [ +V ] [ +V ]   (V.ADJ knob next to the terminals)
-   AC in       earth     5 V output, two pairs
+ [ 1 L ] [ 2 N ] [ 3 ⏚ ] [ 4 -V ] [ 5 -V ] [ 6 +V ] [ 7 +V ]   (V.ADJ knob next to them)
 ```
 
-**Before the first power-up, check the input voltage switch on the side of each supply is set
-to 115 V.** At 230 V it won't run properly on a US outlet.
-
-### Diagram
-
-```
-                       120 V outlet
-                            │
-                  switched power strip (breaker)
-                    │                    │
-            cord A (L N ⏚)        cord B (L N ⏚)
-                    │                    │
-         ┌──────────┴─────────┐ ┌────────┴───────────┐
-         │   LRS-100-5  "A"   │ │   LRS-100-5  "B"   │
-         │ -V -V        +V +V │ │ -V -V        +V +V │
-         └──┬──┬─────────┬──┬─┘ └─┬──┬─────────┬──┬──┘
-            │  │         │  │     │  │         │  │
-            │  │  ┌──────┘  │     │  │  ┌──────┘  │
-            │  │  │      ┌──┘     │  │  │      ┌──┘
-            │  │ [15A]  [15A]     │  │ [15A]  [15A]          fuses on +V
-            │  │  │      │        │  │  │      │
-            │  │  A1     A2       │  │  B1     B2            14 AWG to each branch
-            │  │  │      │        │  │  │      │
-            │  │ panels  panels   │  │ panels  panels
-            │  │ 1,2,3   4,5,6    │  │ 7,8,9   10,11,12
-            │  │  │      │        │  │  │      │
-            └──┴──┴──────┴── GND ─┴──┴──┴──────┴──           −V returns
-                     │
-            14 AWG jumper: −V of A to −V of B (never join +V to +V)
-                     │
-              controller GND
-```
-
-Each branch: the fused +V and its −V return go to a pair of lever connectors near the three
-panels, and each panel's pigtail goes into those connectors.
-
-| Branch | Supply terminals | Panels | Position on the wall |
-| --- | --- | --- | --- |
-| A1 | A, first +V / −V pair | 1, 2, 3 | top row, left three |
-| A2 | A, second +V / −V pair | 4, 5, 6 | top row right, middle row right two |
-| B1 | B, first +V / −V pair | 7, 8, 9 | middle row left two, bottom row left |
-| B2 | B, second +V / −V pair | 10, 11, 12 | bottom row, right three |
+**There is no input voltage switch:** the LRS-100 is full-range (85 to 264 V AC) and gives
+full output from 115 V up, so it runs from a US outlet as it comes.
 
 ### Steps
 
-1. Mount both supplies on a non-flammable surface with space around them for air. Don't
-   put them in a sealed box or squeezed behind the panels.
-2. Set each supply's input switch to **115 V**.
-3. AC side, cord unplugged: brown/black (hot) to L, white/blue (neutral) to N, green to ⏚.
-   Fit the terminal cover.
-4. Run the four branches as in the table: 14 AWG from each +V terminal through a 15 A fuse,
-   and from the matching −V terminal, to the lever connectors near those panels. Plug in the
-   panel pigtails.
-5. Join the two supplies' −V terminals with the 14 AWG jumper. The data ribbon between
-   panels 6 and 7 crosses from one supply to the other, so the grounds must be common.
-   **Never connect +V of A to +V of B.**
-6. Controller power: during testing, power the ESP32 board from its USB-C port (from your
-   computer, which you need for the serial monitor anyway). For the permanent install, use a
-   5 V USB charger on the same power strip, or feed the board's 5 V input from supply A
-   through a 2 A fuse. Check Waveshare's interface diagram for which terminal is the board's
-   own input. Never run panel current through the board.
-7. Connect the board's ground to the −V bus as well as through the ribbon, with a short wire.
-8. HUB75 data: board to panel 1, then panel to panel following the chain. Keep the
-   board-to-panel-1 ribbon short (the first panel's input chip wants a stronger signal
-   than the 3.3 V board gives; short cable helps).
+1. Mount both supplies on the supply plate (section 5 of [`assembly-guide.md`](assembly-guide.md)):
+   on a metal plate with air around them, below the wall, never squeezed behind the panels.
+2. AC side, cord unplugged: black (hot) to L, white (neutral) to N, green to ⏚. Fit the
+   terminal cover.
+3. Each supply: +V (terminal 6 or 7) through the 20 A fuse to its + bus bar; −V (terminal 4
+   or 5) to its GND bus bar. 14 AWG; 12 AWG if the run is longer than 1 m.
+4. Each panel: plug its lead into the panel's 5 V socket, then screw the red fork to its
+   supply's + bar and the black fork to the GND bar, in the slot with the panel's number.
+5. Join the two GND bus bars with the 14 AWG jumper. The data ribbon between panels 6 and 7
+   crosses from one supply to the other, so the grounds must be common.
+   **Never connect supply A's + bar to supply B's.**
+6. Controller power (see [`assembly-guide.md`](assembly-guide.md) section 4): during testing,
+   power the board from the laptop through its USB-C data port and leave the supply lead off.
+   For the permanent install, run the 2 A-fused red/black lead from bus A to the board's two
+   M3 "screen power" terminals (5 V and GND). Don't connect both at once.
+7. HUB75 data: the board plugs straight onto panel 1's IN header; then OUT to IN along the
+   chain, as in the drawing.
 
 ## 4. Wiring with one Mean Well UHP-500-5
 
@@ -172,30 +132,10 @@ Input is 90 to 264 V AC, full output from 110 V up, so no voltage switch to set.
 
 ### Diagram
 
-```
-   120 V outlet ── switched strip ── cord (L N ⏚)
-                                         │
-              ┌──────────────────────────┴───────────────────────────┐
-              │        Mean Well UHP-500-5  (on 450×450×3 mm plate)   │
-              │  TB1: 1 L  2 N  3 ⏚        TB2/TB3: 1 −V 2 −V 3 +V 4 +V│
-              └──────────────────────────────────┬────┬────┬────┬────┘
-                                                  │    │    │    │
-                                 8 AWG, short     │    │    │    │
-                     ┌────────────────────────────┘    │    │    │
-                     │    ┌────────────────────────────┘    │    │
-                     │    │         ┌───────────────────────┘    │
-                     │    │         │    ┌───────────────────────┘
-                 ┌───┴────┴───┐ ┌───┴────┴───┐
-                 │  − bus bar │ │  + bus bar │
-                 └─┬──┬──┬──┬─┘ └─┬──┬──┬──┬─┘
-                   │  │  │  │     │  │  │  │
-                   │  │  │  │   [20A][20A][20A][20A]     12 AWG branches, fuse on +V
-                   │  │  │  │     │  │  │  │
-                  panels 1-3   panels 4-6   panels 7-9   panels 10-12
-                  (each branch: +V and −V to lever connectors, then panel pigtails)
+![Rear wiring, one supply](diagrams/wall-rear-single-supply.svg)
 
-   controller GND ── − bus bar
-```
+Each branch's bars hold three panels' fork terminals, in the slots with their panel numbers.
+The controller's 2 A-fused lead comes from branch 1's bars.
 
 At full white each branch carries about 12 to 15 A, comfortably inside 12 AWG and a 20 A fuse.
 Use both terminal pairs on the supply (one 8 AWG lead per terminal), not just one pair.
@@ -246,7 +186,7 @@ at 10%.
 
 ### Test 2: one panel
 
-Connect only panel 1 (power from branch A1, data from the board). Flash the test pattern
+Connect only panel 1 (power from bus A, slot 1; the board plugged onto its IN header). Flash the test pattern
 build. Panel 1 shows "1", a border and an up arrow. If it's blank or noisy, rebuild with
 `-DWALL_DRIVER_FM6126A` added. If the board reboots in a loop, see `README.md` (flash mode).
 
@@ -260,16 +200,17 @@ rate printed in the serial log at boot.
 ### Test 4: current measurements
 
 Flash the calibration build (capped at 50% on the LRS-100-5s). Clamp the DC clamp meter
-around **both +V wires from one supply together** (both inside the jaw). Use the +V side:
-the −V wires are joined between the supplies, so return current can split between them and
-the reading would be off. With the UHP-500-5, clamp both 8 AWG +V leads together. Zero the
+around **that supply's +V feed** (the fused red wire from the supply to its + bus bar). Use
+the +V side: the GND bars are joined between the supplies, so return current can split
+between them and the reading would be off. With the UHP-500-5, clamp both 8 AWG +V leads
+together (both inside the jaw). Zero the
 clamp meter (DC zero button) before each reading.
 
 For each line in the table, set the pattern and brightness, wait 10 seconds, and read:
 
 - the current for each supply
-- the voltage at the **farthest panel** on each branch (meter probes on that panel's power
-  connector, + and −)
+- the voltage at the **farthest panel** on each bus (meter probes on that panel's 5 V
+  socket, + and −)
 
 Watch for flicker or the wall blinking off and on: that's the supply's overload protection
 ("hiccup"). If it happens, press `k` at once and note which line it was.

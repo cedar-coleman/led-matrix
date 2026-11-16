@@ -20,7 +20,7 @@ SupplyAmps estimateSupplyAmps(const uint8_t* rgb, double brightnessPct, const Po
   for (int y = 0; y < H; y++) {
     for (int x = 0; x < W; x++, o += 3) {
       const uint32_t load = o[0] + o[1] + o[2];
-      const bool onA = y < 32 || (y < 64 && x >= 128);
+      const bool onA = y < 32 || (y < 64 && x < 128);
       if (onA) {
         a += load;
       } else {

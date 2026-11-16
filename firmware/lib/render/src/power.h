@@ -1,10 +1,10 @@
 // Power estimate for a 256x96 frame on the wall's supplies: a port of web/power.js.
 //
 // The default (wall::PowerSupplies) is two 5 V 18 A supplies: supply A feeds chain panels
-// 1-6, supply B panels 7-12. With the serpentine chain (row 2 mounted upside down, running
-// right to left) that is:
-//   A: the top row, plus the right half of the middle row
-//   B: the left half of the middle row, plus the bottom row
+// 1-6, supply B panels 7-12. With the chain starting at the front top-right panel and
+// row 2 upside down running left to right (panel_map.h), seen from the front that is:
+//   A: the top row, plus the left half of the middle row
+//   B: the right half of the middle row, plus the bottom row
 // With one supply all twelve panels count against one budget.
 // Current is treated as linear in channel value and brightness, which ignores driver
 // gamma, so this is an estimate; Phase 0 step 5 calibrates PANEL_FULL_WHITE_A.
