@@ -426,7 +426,8 @@ def frame():
     s.text(880, 40, "Aluminium extrusion frame (rear view, as seen standing behind the wall)", size=26, weight="bold")
     ox, oy = 80, 110
     W_, H_ = 4 * PW, 3 * PH
-    inset = 10
+    inset = 15  # top and bottom rail centres, and the edge mounts' inserts (hardware/mounts.py)
+    rail_end = 5
     ext = 330  # stiles run on below the wall to carry the supply crossbar
     # stiles (behind the rails, wall side)
     stiles = [ox + 60, ox + W_ / 2 - 10, ox + W_ - 80]
@@ -441,7 +442,7 @@ def frame():
     # rails at the four junction lines
     rail_y = [oy + inset, oy + PH, oy + 2 * PH, oy + H_ - inset]
     for y in rail_y:
-        s.rect(ox + inset, y - 10, W_ - 2 * inset, 20, fill="#aeb6bf", stroke="#3d4650", sw=2)
+        s.rect(ox + rail_end, y - 10, W_ - 2 * rail_end, 20, fill="#aeb6bf", stroke="#3d4650", sw=2)
     s.text(ox + W_ + 16, rail_y[0] + 6, "top rail", size=14, anchor="start")
     s.text(ox + W_ + 16, rail_y[1] + 6, "seam rail", size=14, anchor="start")
     s.text(ox + W_ + 16, rail_y[2] + 6, "seam rail", size=14, anchor="start")
@@ -457,6 +458,12 @@ def frame():
             else:
                 s.circle(x, y, 11, fill="white", stroke=ORANGE)  # recommended
             s.circle(x, y, 4, fill=BLACK)
+    # optional pair mounts on the panels' mid-edge posts, insert 9 mm to the side
+    for y in rail_y[1:3]:
+        for k in range(COLS):
+            x = ox + PW / 2 + k * PW + 9
+            s.circle(x, y, 8, fill="white", stroke=GREY)
+            s.circle(x, y, 3, fill=GREY)
     # bus bars on the seam rails: A serves the top row and panels 5-6 (rear right of row 2)
     s.rect(ox + 2 * PW + 60, rail_y[1] - 34, 200, 14, fill="#f6c6c6", stroke=RED, sw=2, rx=3)
     s.rect(ox + 2 * PW + 60, rail_y[1] + 20, 200, 14, fill="#d9d9d9", stroke=BLACK, sw=2, rx=3)
@@ -486,13 +493,16 @@ def frame():
     ky = py + 250
     s.circle(ox + 10, ky, 11, fill=ORANGE, stroke=BLACK)
     s.circle(ox + 10, ky, 4, fill=BLACK)
-    s.text(ox + 30, ky + 5, "junction mount, minimum 14 (10 seam + 4 corners): bracket with M5 insert, 30 mm standoff, M5 screw through the drilled rail",
+    s.text(ox + 30, ky + 5, "junction mount, minimum 14 (10 seam + 4 corners): printed mount with M5 insert, 30 mm standoff, M5 screw through the drilled rail",
            size=15, anchor="start")
+    s.circle(ox + 1000, ky + 62, 8, fill="white", stroke=GREY)
+    s.circle(ox + 1000, ky + 62, 3, fill=GREY)
+    s.text(ox + 1016, ky + 67, "optional (8): mid-edge posts", size=15, anchor="start")
     s.circle(ox + 10, ky + 62, 11, fill="white", stroke=ORANGE)
     s.circle(ox + 10, ky + 62, 4, fill=BLACK)
     s.text(ox + 30, ky + 67, "recommended (6 more): keeps the top and bottom seams flush", size=15, anchor="start")
     s.rect(ox, ky + 24, 40, 14, fill="#aeb6bf", stroke="#3d4650", sw=2)
-    s.text(ox + 50, ky + 36, "rails: 4 x 2020, about 1260 mm      stiles (behind the rails): 3 x 2020, about 830 mm, "
+    s.text(ox + 50, ky + 36, "rails: 4 x 2020, about 1270 mm     stiles (behind the rails): 3 x 2020, about 830 mm, "
            "joined with right-angle corner brackets (2 per crossing)", size=15, anchor="start")
     # side section
     sx, sy = 1440, 120

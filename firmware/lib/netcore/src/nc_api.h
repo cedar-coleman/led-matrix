@@ -78,7 +78,9 @@ long long revOf(JsonVariantConst doc);  // a missing or non-integer rev reads as
 
 ApiError validateAthletes(JsonArrayConst in, JsonArray out);
 // Server-side PR dates, and in pr_prev the value each one replaced (null when the lift was
-// blank). today "" (clock not valid) stamps nothing; stored dates and previous values are kept.
+// blank). A second PR on the same day keeps the first one's previous value while the new value
+// is above it. today "" (clock
+// not valid) stamps nothing; stored dates and previous values are kept.
 void stampPrs(JsonArray athletes, JsonArrayConst before, const std::string& today);
 ApiError validatePlaylist(JsonArrayConst in, const std::set<std::string>& mediaNames, JsonArray out);
 // PUT /api/announcements (API.md 6a): text trimmed, blank dates null, unknown fields dropped.

@@ -222,7 +222,8 @@ Data rules taken from the chalkboard:
 - A PR set in the last 7 days can show in green. This needs the editor to record a date,
   which the chalkboard never had, so existing entries start with no date. The wall stamps
   the date, and the value the PR replaced (`pr_prev`), when a lift goes up (`API.md`
-  section 6).
+  section 6). Two PRs in one lift on the same day count as one gain: 75 to 77.5, then a
+  correction to 80, shows +5.
 - Order is entry order, as on the chalkboard. Sorting by total or by name is a setting.
 - Page time: 31 athletes at 9 per page is 4 pages. At 8 s per page, a full pass takes 32 s.
 

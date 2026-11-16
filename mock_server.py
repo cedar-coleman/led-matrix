@@ -765,7 +765,8 @@ def stamp_prs(athletes, before, today):
     """Server-side PR dates. Existing athlete: a lift that went up, or was filled in for the
     first time, gets today's date (in the wall's zone) and pr_prev records the value it
     replaced (None when there was none); other stored dates and previous values are kept.
-    New athletes start with neither. today None (clock not set) stamps nothing."""
+    A second PR on the same day keeps the first one's pr_prev while the new value is above it,
+    so the wall shows one gain for the day. New athletes start with neither. today None (clock not set) stamps nothing."""
     old = {a["id"]: a for a in before}
     for a in athletes:
         o = old.get(a["id"])
@@ -778,8 +779,11 @@ def stamp_prs(athletes, before, today):
             for lift in LIFTS:
                 v, ov = a[lift], o.get(lift)
                 if v is not None and (ov is None or v > ov):
+                    first = prev.get(lift)
+                    same_day = dates.get(lift) == today and lift in prev
+                    if not (same_day and (first is None or v > first)):
+                        prev[lift] = ov
                     dates[lift] = today
-                    prev[lift] = ov
         a["pr_dates"], a["pr_prev"] = dates, prev
     return athletes
 

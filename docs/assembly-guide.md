@@ -122,42 +122,49 @@ bars where the panels' forks screw on. After switching, set Settings → Power s
 A 2020 frame holds every panel at its corners on 30 mm standoffs, carries the bus bars and
 the supplies, and hangs on the wall as one unit.
 
-- **Rails behind every line where panels meet.** Four horizontal 2020 rails: behind the top
-  edge, the two row seams and the bottom edge, set about 10 mm in from the outer edges so
-  they don't show from the front. A frame round the outside only would leave panels 6 and 7
+- **Rails behind every line where panels meet.** Four horizontal 2020 rails: two centred on
+  the row seams, and two centred 15 mm in from the wall's top and bottom edges, where the
+  edge mounts' inserts are. Each rail stops 5 mm short of the wall's sides, so none of the
+  frame shows from the front. A frame round the outside only would leave panels 6 and 7
   (the middle of row 2) unsupported: they touch no outer edge.
 - **Stiles behind the rails** (wall side): three vertical 2020 lengths, joined to each rail
   at the 12 crossings with two right-angle 2020 corner brackets (one above the rail, one
   below), each bridging the stile's front face and the rail's top or bottom face. Flat
   T-plates don't work here: the rails and stiles sit in different planes. Running them on about 330 mm below the
   bottom rail carries a crossbar for the supplies, so they sit at least 100 mm under the panels.
-- **20 junction mounts:** at each panel-corner junction (4 corners, 6 along the top and
-  bottom edges, 4 along the sides, 6 inside). Use DJDevon3's brackets
-  ([Printables 578204](https://www.printables.com/model/578204-hub75-5mm-pitch-4-panel-bracket);
-  quad, mid, end and top-bottom types, made for the P5(2121)-3264-16S-M5 panel, M3 x 10
-  bolts with washers) with three changes:
-  1. an **M5 heat-set insert** in a boss on each bracket's back (pressed into a solid centre
-     at least 6 mm thick after printing, or a small remix of his `.f3d` source);
-  2. print them in **PETG or ASA**, not PLA: they now carry the wall's weight and the panel
-     backs get warm;
-  3. at the **4 outer corners**, where only one panel sits, a small new corner adapter on
-     that panel's corner post, with the same insert.
+- **Junction mounts** (printed parts in [`hardware/`](../hardware/README.md)). Each panel has
+  six M3 posts on its back: one about 6 mm in from each corner and one at the middle of each
+  long edge. A mount screws onto the posts of the panels that meet there (M3 x 10 into
+  counterbores, no washers) and carries an M5 heat-set insert for the standoff:
+
+  ![Junction mounts](diagrams/junction-mounts.png)
+
+  | Mount | Where | Number |
+  | --- | --- | --- |
+  | quad | where four panel corners meet, on a seam rail | 6 |
+  | pair | two corners across a seam at the wall's edge: 6 on the top and bottom edges, 4 on the sides | 10 |
+  | corner | the wall's four outer corners | 4 |
+  | pair (optional) | the mid-edge posts across each row seam, halfway along each panel | 8 |
+
+  A pair's and a corner's insert sits 9 mm in from its posts, clear of the screw heads, so
+  every insert lands on a rail: the side pairs and the quads on the seam rails, the top and
+  bottom pairs and the corners on the edge rails. Print them in **PETG or ASA**, not PLA:
+  they carry the wall's weight and the panel backs get warm.
 - **How they fix to the rails.** A screw can't reach a T-nut from the panel side, so the
   rails are drilled instead. Lay the panel assembly face down, screw a 30 mm M5 standoff
-  (male-female) into each bracket's insert, lay the rails on top, and drive an M5 screw from
+  (male-female) into each mount's insert, lay the rails on top, and drive an M5 screw from
   the back through a **5.5 to 6.5 mm hole drilled through the rail** into each standoff. Mark
   the holes from the assembled panels; the slightly oversized hole takes up about 0.5 mm of
   error. Then add the stiles and hang the whole unit. To service a panel, take the unit down
-  and lay it face down (two people, about 11 kg). Alternative: keyhole slots in the brackets
-  that hang on screw heads at the standoffs, so the display lifts off the frame; that needs
-  the bracket remix either way.
-- **Which junctions to fix.** Every panel screw goes into a junction bracket; only the
-  brackets connect to the frame. Minimum 14: all 10 on the two seam rails (they hold every
-  middle-row corner and half of each outer panel) plus the 4 outer corners. Recommended: all
-  20, so the top and bottom seams stay flush. Fit everything loosely, push the panels flush,
+  and lay it face down (two people, about 11 kg).
+- **Which junctions to fix.** Every panel post that has a mount on it is held by that mount;
+  only the mounts connect to the frame. Minimum 14: all 10 on the two seam rails (they hold
+  every middle-row corner and half of each outer panel) plus the 4 outer corners.
+  Recommended: all 20, so the top and bottom seams stay flush. The 8 optional mid-edge pairs
+  hold the long row seams halfway along; add them if a seam bows. Fit everything loosely, push the panels flush,
   then tighten; the T-nuts can slide a little, so the plastic panels and aluminium frame
   don't fight as the temperature changes.
-- **Stile joints.** Two side stiles carry the load (a 1.26 m 2020 rail sags only about
+- **Stile joints.** Two side stiles carry the load (a 1.27 m 2020 rail sags only about
   0.7 mm under its share of the panels, by beam calculation); the centre stile adds a middle
   wall fixing and support for the supply crossbar. Join each rail-stile crossing with two
   metal right-angle corner brackets: these joints carry the whole wall in shear, and printed
@@ -176,24 +183,25 @@ the supplies, and hangs on the wall as one unit.
 
 | Cut list | Quantity | Length |
 | --- | --- | --- |
-| 2020 rail | 4 | about 1260 mm (wall width less 10 mm each end) |
+| 2020 rail | 4 | about 1270 mm (wall width less 5 mm each end) |
 | 2020 stile | 3 | about 830 mm (wall height less the insets, plus 330 mm below for the supplies) |
 | 2020 supply crossbar | 1 | about 1150 mm, across the outer stiles below the panels (from the spare length) |
 
 | Hardware | Quantity |
 | --- | --- |
-| DJDevon3 brackets printed in PETG or ASA, with an M5 heat-set insert each | 16 (6 quad, 10 edge types) |
-| Corner adapters (new part), PETG or ASA, M5 heat-set insert | 4 |
-| M5 standoffs, 30 mm, male-female | 20 |
-| M5 x 30 screws and washers (through the rail into the standoff) | 20 |
-| M3 x 10 bolts and washers into the panels' posts | per DJDevon3's brackets |
+| Junction mounts (`hardware/stl`), PETG or ASA, an M5 heat-set insert each | 20: 6 quad, 10 pair, 4 corner (plus 8 pair if you fit the optional ones) |
+| M5 standoffs, 30 mm, male-female | 20 (28) |
+| M5 x 30 screws and washers (through the rail into the standoff) | 20 (28) |
+| M3 x 10 socket head screws into the panels' posts (no washers: the mounts are counterbored) | 48 (64) |
 | M5 drop-in T-nuts and screws (bus bars, cable clips, supply adapters, crossbar) | about 25 |
 | Metal 2020 right-angle corner brackets (2 per rail-stile crossing) | 24 |
 
-**Measure first.** Print one quad bracket in PETG and test-fit it on two panels. Then
-measure its centre thickness, where the panels' M3 corner posts are (distance from each
-edge), and how far the connectors stand off the back (if more than about 25 mm, lengthen the
-standoffs). Send those and I'll specify the insert boss and the corner adapter.
+**Test-fit one first.** The 6 mm post position is scaled from the supplier's photo of the
+panel's back, so it is good to about 1 mm. Print one quad and screw it onto four panels
+laid face down: if the screws start without forcing, print the rest. If not, measure post
+centre to panel edge, set `POST_INSET` in `hardware/mounts.py` and run it again (see
+[`hardware/README.md`](../hardware/README.md)). While the panels are face down, check how far
+the connectors stand off the back: if more than about 25 mm, lengthen the standoffs.
 
 ### The wall: battens (simpler alternative)
 
@@ -298,16 +306,16 @@ size and contents before ordering. Links reused from DJDevon3's build are marked
 
 | Part | For | Qty | Link | Check |
 | --- | --- | --- | --- | --- |
-| 2020 V-slot extrusion, 1500 mm, 4-pack | 4 rails (cut to 1260), 3 stiles (cut to 830), 1 crossbar (cut to 1150) | 2 packs (all 8 lengths used) | [MECCANIXITY 4 x 1500 mm](https://www.amazon.com/dp/B0GFDP1Z34) | Cut square with a metal-cutting blade, or buy cut to length from an extrusion supplier |
+| 2020 V-slot extrusion, 1500 mm, 4-pack | 4 rails (cut to 1270), 3 stiles (cut to 830), 1 crossbar (cut to 1150) | 2 packs (all 8 lengths used) | [MECCANIXITY 4 x 1500 mm](https://www.amazon.com/dp/B0GFDP1Z34) | Cut square with a metal-cutting blade, or buy cut to length from an extrusion supplier |
 | 2020 right-angle corner brackets with M5 T-nuts and screws | Rail-stile crossings, 2 each | 24 (3 x 10-sets) | [KOOTANS 10-set](https://www.amazon.com/dp/B07PZKRTYZ) | |
 | M5 drop-in T-nuts, 2020 series | Bus bars, supply adapters, crossbar, cable clips | 1 pack | [60 pcs](https://www.amazon.com/dp/B0FKWJQ5NS) | |
-| M5 heat-set inserts | One per bracket and corner adapter | 20 (plus spares) | [initeq M5, 20 pcs](https://www.amazon.com/dp/B077CJ26FL) | Print the hole to the insert maker's size |
-| M5 standoffs, 30 mm, male-female | Bracket to rail | 20 | [Brass M5, choose 30 mm](https://www.amazon.com/dp/B0GYQN95GB) | Pick M5 and 30 mm in the listing's options; the male thread adds about 8 mm |
-| M5 x 30 socket head screws | Through the drilled rail into each standoff | 20 | [Newport 50-pack](https://www.amazon.com/dp/B082GH7JW6) | |
-| M3 x 10 socket head screws with washers | Brackets into the panels' posts | 1 kit | [100 pcs with washers](https://www.amazon.com/dp/B091N1J6F8) | |
+| M5 heat-set inserts | One per junction mount | 20, or 28 with the optional pairs (plus spares) | [initeq M5, 20 pcs](https://www.amazon.com/dp/B077CJ26FL) | The mounts print a 6.4 mm hole; if the insert maker gives another size, set `INSERT_D` in `hardware/mounts.py` |
+| M5 standoffs, 30 mm, male-female | Mount to rail | 20 (28) | [Brass M5, choose 30 mm](https://www.amazon.com/dp/B0GYQN95GB) | Pick M5 and 30 mm in the listing's options; the male thread adds about 8 mm |
+| M5 x 30 socket head screws | Through the drilled rail into each standoff | 20 (28) | [Newport 50-pack](https://www.amazon.com/dp/B082GH7JW6) | |
+| M3 x 10 socket head screws | Mounts into the panels' posts | 48 (64) | [100 pcs with washers](https://www.amazon.com/dp/B091N1J6F8) | The washers aren't needed |
 | M3 x 6 screws (adapter 3 mm thick + at most 3 mm into the case) | Supplies onto their adapters | 4 | from any M3 assortment | Match the length to your adapter: never more than 3 mm into the supply |
 | Aluminium flat bar, about 25 x 3 mm, or printed PETG/ASA | Supply adapters | 2 short pieces | any hardware store | |
-| PETG or ASA filament | Brackets, corner adapters, cable clips, terminal covers | 1 spool | any brand | Not PLA |
+| PETG or ASA filament | Junction mounts, cable clips, terminal covers | 1 spool | any brand | Not PLA |
 
 ### If you move to one UHP-500-5
 

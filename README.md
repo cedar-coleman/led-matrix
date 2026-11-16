@@ -94,6 +94,7 @@ controller into programming mode instead).
 | `design.md` | Hardware, power, memory, architecture, Instagram setup, build plan |
 | `docs/assembly-guide.md` | Panel layout and chain order, data and power wiring drawings, controller connection, mounting and cooling |
 | `docs/power-wiring-guide.md` | Wiring the panels to one or two supplies, the current measurements, and the "Power supplies" setting |
+| `hardware/` | Printed junction mounts (STLs) that hold the panels to the frame, and the script that generates them |
 | `API.md` | The exact REST contract the firmware and mock implement |
 | `web/` | The console. `layout.js`, `igslides.js`, `prslides.js`, `announceslides.js`, `power.js` are the on-wall spec the firmware ports |
 | `mock_server.py` | Stand-in for the board |

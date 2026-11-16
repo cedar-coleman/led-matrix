@@ -906,8 +906,8 @@ void test_previous_value_recorded_with_the_date() {
   }
   out = save(stored, ann(", \"snatch\": 75, \"clean_jerk\": 100").c_str(), today);
   TEST_ASSERT_EQUAL_STRING("{\"snatch\":null,\"clean_jerk\":null}", dump(out[0]["pr_prev"]).c_str());
-  out = save(stored, ann(", \"snatch\": 77.5, \"clean_jerk\": 100.5").c_str(), today);
-  TEST_ASSERT_EQUAL_STRING("{\"snatch\":75,\"clean_jerk\":100}", dump(out[0]["pr_prev"]).c_str());
+  out = save(stored, ann(", \"snatch\": 77.5, \"clean_jerk\": 100.5").c_str(), today);  // one gain per day
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":null,\"clean_jerk\":null}", dump(out[0]["pr_prev"]).c_str());
   // Kept next to pr_dates, in the order the file is written.
   TEST_ASSERT_EQUAL_STRING("{\"snatch\":\"2026-11-06\",\"clean_jerk\":\"2026-11-06\"}", dump(out[0]["pr_dates"]).c_str());
   std::string keys;
@@ -935,6 +935,25 @@ void test_client_previous_values_are_ignored() {
   TEST_ASSERT_EQUAL_STRING("{}", dump(out[0]["pr_prev"]).c_str());
   out = save(old, ann(", \"snatch\": 81").c_str(), today);
   TEST_ASSERT_EQUAL_STRING("{\"snatch\":80}", dump(out[0]["pr_prev"]).c_str());
+}
+
+// The mock's test_same_day_prs_show_one_gain.
+void test_same_day_prs_show_one_gain() {
+  JsonDocument stored;
+  stored.to<JsonArray>();
+  const std::string today = "2026-11-06";
+  save(stored, ann().c_str(), today);
+  save(stored, ann(", \"snatch\": 77.5").c_str(), today);  // down, nothing stamped
+  JsonDocument out = save(stored, ann(", \"snatch\": 82.5").c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":77.5}", dump(out[0]["pr_prev"]).c_str());
+  out = save(stored, ann(", \"snatch\": 85").c_str(), today);  // corrected the same day
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":77.5}", dump(out[0]["pr_prev"]).c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":\"2026-11-06\"}", dump(out[0]["pr_dates"]).c_str());
+  // A PR stamped on an earlier day starts a new day's gain.
+  JsonDocument old = parse("[{\"id\": \"a1\", \"name\": \"Ann\", \"snatch\": 85, \"back_squat\": 150, "
+                           "\"pr_dates\": {\"snatch\": \"2026-11-05\"}, \"pr_prev\": {\"snatch\": 77.5}}]");
+  out = save(old, ann(", \"snatch\": 87.5").c_str(), today);
+  TEST_ASSERT_EQUAL_STRING("{\"snatch\":85}", dump(out[0]["pr_prev"]).c_str());
 }
 
 void test_no_stamp_without_valid_time() {
@@ -1515,6 +1534,7 @@ int main(int, char**) {
   RUN_TEST(test_no_stamp_without_valid_time);
   RUN_TEST(test_previous_value_recorded_with_the_date);
   RUN_TEST(test_client_previous_values_are_ignored);
+  RUN_TEST(test_same_day_prs_show_one_gain);
   RUN_TEST(test_new_prs_slide_type);
   RUN_TEST(test_announcement_validation_matches_the_mock);
   RUN_TEST(test_announcements_slide_type);

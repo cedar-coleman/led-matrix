@@ -500,12 +500,27 @@ class PrDateTest(ApiBase):
         for change in ({"snatch": 70}, {"snatch": 70, "back_squat": 150}, {"snatch": None}):
             _, body = self.put_athletes(self.ann(clean_jerk=100, **change))
             self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 80, "clean_jerk": None}, change)
-        # Filled in again after being cleared: there was nothing stored to replace.
+        # Filled in again after being cleared, below the day's first previous value: there was
+        # nothing stored to replace.
         _, body = self.put_athletes(self.ann(snatch=75, clean_jerk=100))
         self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": None, "clean_jerk": None})
-        # A second PR the same day records what that one replaced.
+        # A second PR the same day keeps the first one's previous value: one gain for the day.
         _, body = self.put_athletes(self.ann(snatch=77.5, clean_jerk=100.5))
-        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 75, "clean_jerk": 100})
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": None, "clean_jerk": None})
+
+    def test_same_day_prs_show_one_gain(self):
+        self.put_athletes(self.ann(snatch=77.5))  # 80 stored: down, nothing stamped
+        _, body = self.put_athletes(self.ann(snatch=82.5))
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 77.5})
+        _, body = self.put_athletes(self.ann(snatch=85))  # corrected the same day
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 77.5})
+        self.assertEqual(body["athletes"][0]["pr_dates"], {"snatch": "2026-11-06"})
+        # A PR stamped on an earlier day starts a new day's gain.
+        stored = json.loads((self.data / "athletes.json").read_text())
+        stored["athletes"][0]["pr_dates"]["snatch"] = "2026-11-05"
+        (self.data / "athletes.json").write_text(json.dumps(stored))
+        _, body = self.put_athletes(self.ann(snatch=87.5))
+        self.assertEqual(body["athletes"][0]["pr_prev"], {"snatch": 85})
 
     def test_client_previous_values_are_ignored(self):
         forged = {"snatch": 1, "back_squat": 2, "bench": 3}

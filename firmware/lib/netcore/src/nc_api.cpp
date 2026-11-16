@@ -214,7 +214,14 @@ void stampPrs(JsonArray athletes, JsonArrayConst before, const std::string& toda
       JsonVariantConst v = a[lift], ov = o[lift];
       if (v.isNull()) continue;
       if (!isJsonNumber(ov) || v.as<double>() > ov.as<double>()) {
+        // A second PR on the same day keeps the first one's previous value while the new value
+        // is above it: one gain per day.
+        const char* stampedOn = dates[lift].as<const char*>();
+        JsonVariantConst first = prev[lift];
+        const bool keepPrev = stampedOn && today == stampedOn && !prev[lift].isUnbound() &&
+                              (!isJsonNumber(first) || v.as<double>() > first.as<double>());
         dates[lift] = today;
+        if (keepPrev) continue;
         if (isJsonNumber(ov)) {
           prev[lift] = ov;  // keeps int or float, as stored
         } else {

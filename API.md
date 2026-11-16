@@ -224,7 +224,10 @@ records the value it replaced:
   `null` or the new value is greater (numeric comparison), set that lift's date to today's
   local date and its `pr_prev` to the stored value (`null` if it was blank).
 - Every other stored date and previous value is kept as it was, including for a lift that went
-  down or was cleared. A second PR on the same day records the value that one replaced.
+  down or was cleared. A second PR in a lift on the same day keeps the `pr_prev` the first one
+  recorded when that is `null` or below the new value, so the wall shows one gain for the day:
+  75 to 77.5, then 80 the same day, shows +5. Otherwise (the lift was cleared and re-entered
+  lower) it records the value it replaced, as any PR does.
 - If the clock is not valid (`time_valid` false, section 10), nothing is stamped; stored dates
   and previous values are still kept.
 
