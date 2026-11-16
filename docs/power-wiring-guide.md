@@ -83,8 +83,9 @@ full output from 115 V up, so it runs from a US outlet as it comes.
 
 ### Steps
 
-1. Mount both supplies on the supply plate (section 5 of [`assembly-guide.md`](assembly-guide.md)):
-   on a metal plate with air around them, below the wall, never squeezed behind the panels.
+1. Mount both supplies as in [`assembly-guide.md`](assembly-guide.md) section 6: bolted by
+   their bases to the frame's crossbar (no extra plate needed for the LRS-100), with air around
+   them, below the wall, never squeezed behind the panels.
 2. AC side, cord unplugged: black (hot) to L, white (neutral) to N, green to ⏚. Fit the
    terminal cover.
 3. Each supply: +V (terminal 6 or 7) through the 20 A fuse to its + bus bar; −V (terminal 4

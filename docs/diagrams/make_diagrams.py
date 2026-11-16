@@ -181,7 +181,7 @@ def rear_two_supplies():
     # supplies on the plate below
     plate_y = oy + 3 * PH + 175
     s.rect(ox - 20, plate_y - 20, 4 * PW + 40, 310, fill="#f4f4f4", stroke=GREY, sw=2, dash="8,6")
-    s.text(ox + 4 * PW + 10, plate_y + 5, "supply plate below the wall", size=16, anchor="end", fill=GREY)
+    s.text(ox + 4 * PW + 10, plate_y + 5, "supplies below the wall", size=16, anchor="end", fill=GREY)
     A = lrs(s, ox + 60, plate_y + 30, "Supply A")
     B = lrs(s, ox + 2 * PW + 60, plate_y + 30, "Supply B")
     for sup, bx, by, w in ((A, a_x, a_y, wa), (B, b_x, b_y, wb)):
@@ -376,24 +376,25 @@ def mounting():
     for k in range(3):
         s.line([(wx + 92 + k * 14, 836), (wx + 92 + k * 14, 690)], stroke=TEAL, sw=2, arrow=True, dash="6,4")
     s.line([(wx + 8, 846), (wx + 8, 690)], stroke=TEAL, sw=2, arrow=True, dash="6,4")
-    callout(wx + 8, 710, 330, 560, "15 mm standoffs: air also flows behind the plate")
-    callout(wx + 21, 760, 330, 600, "aluminium plate, 3 mm (heat spreader and mount)")
-    callout(wx + 51, 790, 330, 640, "supply, base bolted to the plate (2 x M3, max 3 mm into the case)")
+    callout(wx + 8, 710, 330, 560, "the crossbar holds the supply off the wall: air flows behind it too")
+    callout(wx + 21, 760, 330, 600, "2020 crossbar plus a small adapter (no extra plate needed for the LRS-100)")
+    callout(wx + 51, 790, 330, 640, "supply, base bolted to the adapter (2 x M3, max 3 mm into the case)")
     callout(wx + 120, 700, 330, 680, "cool air in at the bottom, out at the top", TEAL)
     s.text(330, 702, "keep 25 mm clear around the supply's mesh", size=15, anchor="start", fill=TEAL)
-    # front view of the plate
+    # front view of the supply mounting
     px, py = 1000, 120
-    s.text(px + 300, py - 20, "Supply plate, front view (two LRS-100-5)", size=20, weight="bold")
-    s.rect(px, py, 600, 380, fill="#e4e4e4", stroke=BLACK, sw=2, rx=6)
-    s.text(px + 300, py + 400, "about 600 x 380 x 3 mm aluminium, 4 standoffs", size=15)
+    s.text(px + 300, py - 20, "Supply mounting, front view (two LRS-100-5)", size=20, weight="bold")
+    s.rect(px, py + 320, 600, 22, fill="#aeb6bf", stroke="#3d4650", sw=2)
+    s.text(px + 300, py + 370, "2020 crossbar across the stile extensions", size=15)
     for i, name in enumerate(("Supply A", "Supply B")):
         sx = px + 50 + i * 290
+        s.rect(sx + 60, py + 300, 86, 50, fill="#b8b8b8", stroke=BLACK, sw=1.5, rx=3)
         s.rect(sx, py + 150, 206, 155, fill="#f8f8f8", stroke=BLACK, sw=2, rx=4)
         s.text(sx + 103, py + 210, name, size=18, weight="bold")
         s.text(sx + 103, py + 232, "129 x 97 x 30 mm", size=13, fill=GREY)
         s.text(sx + 103, py + 252, "2 x M3 in the base", size=13, fill=GREY)
         s.rect(sx - 4, py + 150, 30, 155, fill="none", stroke=RED, sw=2, dash="5,4")
-        s.text(sx + 10, py + 325, "terminal cover", size=12, fill=RED)
+        s.text(sx + 10, py + 142, "terminal cover", size=12, fill=RED)
         s.rect(sx + 70, py + 40, 60, 24, fill=FUSE, stroke=BLACK, sw=2, rx=4)
         s.text(sx + 100, py + 32, "20 A fuse", size=13)
     s.rect(px + 230, py + 70, 140, 40, fill="#555", stroke=BLACK, sw=2, rx=4)
@@ -401,7 +402,7 @@ def mounting():
     s.text(px + 300, py + 135, "100 mm between supplies", size=13, fill=GREY)
     # printed enclosure notes
     ny = 600
-    s.text(1000, ny, "If you 3D print instead of using a plate:", size=18, anchor="start", weight="bold")
+    s.text(1000, ny, "If you 3D print a cradle instead:", size=18, anchor="start", weight="bold")
     lines = [
         "- Print a cradle and a terminal cover, not a closed box.",
         "  Leave the supply's mesh top and sides open.",
@@ -417,9 +418,112 @@ def mounting():
     s.save("mounting.svg")
 
 
+# ---- extrusion frame ------------------------------------------------------------------
+
+def frame():
+    """Rear elevation of the 2020 frame with the panel outline, and a side section."""
+    s = Svg(1760, 1060)
+    s.text(880, 40, "Aluminium extrusion frame (rear view, as seen standing behind the wall)", size=26, weight="bold")
+    ox, oy = 80, 110
+    W_, H_ = 4 * PW, 3 * PH
+    inset = 10
+    ext = 330  # stiles run on below the wall to carry the supply crossbar
+    # stiles (behind the rails, wall side)
+    stiles = [ox + 60, ox + W_ / 2 - 10, ox + W_ - 80]
+    for x in stiles:
+        s.rect(x, oy - 10, 20, H_ + 20 + ext, fill="#c9ced6", stroke="#5c6670", sw=2)
+    # panel outline, dashed
+    for row in range(ROWS):
+        for bcol in range(COLS):
+            s.rect(ox + bcol * PW, oy + row * PH, PW, PH, fill="none", stroke=GREY, sw=1.5, dash="6,5")
+            n = chain_number(bcol, row)
+            s.text(ox + bcol * PW + PW / 2, oy + row * PH + PH / 2 + 8, f"panel {n}", size=16, fill=GREY)
+    # rails at the four junction lines
+    rail_y = [oy + inset, oy + PH, oy + 2 * PH, oy + H_ - inset]
+    for y in rail_y:
+        s.rect(ox + inset, y - 10, W_ - 2 * inset, 20, fill="#aeb6bf", stroke="#3d4650", sw=2)
+    s.text(ox + W_ + 16, rail_y[0] + 6, "top rail", size=14, anchor="start")
+    s.text(ox + W_ + 16, rail_y[1] + 6, "seam rail", size=14, anchor="start")
+    s.text(ox + W_ + 16, rail_y[2] + 6, "seam rail", size=14, anchor="start")
+    s.text(ox + W_ + 16, rail_y[3] + 6, "bottom rail", size=14, anchor="start")
+    # junction mounts
+    xs = [ox + inset, ox + PW, ox + 2 * PW, ox + 3 * PW, ox + W_ - inset]
+    for ri, y in enumerate(rail_y):
+        for xi, x in enumerate(xs):
+            seam = ri in (1, 2)
+            corner = ri in (0, 3) and xi in (0, 4)
+            if seam or corner:
+                s.circle(x, y, 11, fill=ORANGE, stroke=BLACK)  # required (seam) or corner
+            else:
+                s.circle(x, y, 11, fill="white", stroke=ORANGE)  # recommended
+            s.circle(x, y, 4, fill=BLACK)
+    # bus bars on the seam rails: A serves the top row and panels 5-6 (rear right of row 2)
+    s.rect(ox + 2 * PW + 60, rail_y[1] - 34, 200, 14, fill="#f6c6c6", stroke=RED, sw=2, rx=3)
+    s.rect(ox + 2 * PW + 60, rail_y[1] + 20, 200, 14, fill="#d9d9d9", stroke=BLACK, sw=2, rx=3)
+    s.text(ox + 2 * PW + 160, rail_y[1] - 42, "bus A (panels 1-6)", size=14, weight="bold")
+    s.rect(ox + PW - 100, rail_y[2] - 34, 200, 14, fill="#f6c6c6", stroke=RED, sw=2, rx=3)
+    s.rect(ox + PW - 100, rail_y[2] + 20, 200, 14, fill="#d9d9d9", stroke=BLACK, sw=2, rx=3)
+    s.text(ox + PW, rail_y[2] + 52, "bus B (panels 7-12)", size=14, weight="bold")
+    # controller corner
+    s.rect(ox + 27, oy + PH / 2 - 21, 50, 42, fill=ORANGE, stroke=BLACK, sw=2, rx=4, opacity=0.9)
+    s.text(ox + 52, oy + PH / 2 + 5, "ESP32", size=12, weight="bold")
+    # supplies on a 2020 crossbar across the stile extensions (no extra plate for the LRS-100)
+    py = oy + H_ + 110
+    cy = py + 150
+    s.rect(ox + 50, cy, W_ - 100, 20, fill="#aeb6bf", stroke="#3d4650", sw=2)
+    s.text(ox + W_ / 2, cy + 52, "supply crossbar (2020) across the stile extensions", size=16, weight="bold")
+    for i, name in enumerate(("Supply A", "Supply B")):
+        sx = ox + 330 + i * 420
+        s.rect(sx + 60, cy - 10, 86, 40, fill="#b8b8b8", stroke=BLACK, sw=1.5, rx=3)
+        s.rect(sx, py + 10, 206, 130, fill="#f8f8f8", stroke=BLACK, sw=2, rx=4)
+        s.text(sx + 103, py + 70, name, size=16, weight="bold")
+        s.text(sx + 103, py + 92, "base bolted to an adapter", size=13, fill=GREY)
+    s.rect(ox + 690 - 50, cy - 50, 100, 36, fill="#555", stroke=BLACK, sw=2, rx=4)
+    s.text(ox + 690, cy - 26, "AC inlet", size=13, fill="white")
+    s.line([(ox + 300, oy + H_ + 10), (ox + 300, py)], stroke=GREY, sw=1.5, dash="4,4")
+    s.text(ox + 306, oy + H_ + 70, "100 mm or more", size=14, anchor="start", fill=GREY)
+    # key
+    ky = py + 250
+    s.circle(ox + 10, ky, 11, fill=ORANGE, stroke=BLACK)
+    s.circle(ox + 10, ky, 4, fill=BLACK)
+    s.text(ox + 30, ky + 5, "junction mount, minimum 14 (10 seam + 4 corners): bracket with M5 insert, 30 mm standoff, M5 screw through the drilled rail",
+           size=15, anchor="start")
+    s.circle(ox + 10, ky + 62, 11, fill="white", stroke=ORANGE)
+    s.circle(ox + 10, ky + 62, 4, fill=BLACK)
+    s.text(ox + 30, ky + 67, "recommended (6 more): keeps the top and bottom seams flush", size=15, anchor="start")
+    s.rect(ox, ky + 24, 40, 14, fill="#aeb6bf", stroke="#3d4650", sw=2)
+    s.text(ox + 50, ky + 36, "rails: 4 x 2020, about 1260 mm      stiles (behind the rails): 3 x 2020, about 830 mm, "
+           "joined with right-angle corner brackets (2 per crossing)", size=15, anchor="start")
+    # side section
+    sx, sy = 1440, 120
+    s.text(sx + 120, sy - 30, "Side section through a seam", size=18, weight="bold")
+    layers = [("wall", 30, "#d8cbb8"), ("stile 20", 20, "#c9ced6"), ("rail 20", 20, "#aeb6bf"),
+              ("spacer 30", 30, None), ("adapter 5", 5, ORANGE), ("panel ~15", 15, "#333")]
+    x = sx
+    for name, w, col in layers:
+        if col:
+            s.rect(x, sy, w, 520, fill=col, stroke=BLACK, sw=1.5)
+        else:
+            s.rect(x + w / 2 - 4, sy + 240, 8, 40, fill="#999", stroke=BLACK, sw=1)
+        x += w
+    s.line([(sx + 50 + 10, sy + 260), (sx + 135, sy + 260)], stroke=BLACK, sw=2)
+    s.text(sx + 138, sy + 600, "front", size=14, anchor="start")
+    s.line([(sx + 75, sy + 330), (sx + 100, sy + 330)], stroke=BLUE, sw=4)
+    s.text(sx + 30, sy + 560, "air gap and cable room", size=13, anchor="start", fill=TEAL)
+    s.text(sx + 30, sy + 578, "between panel and rail", size=13, anchor="start", fill=TEAL)
+    labels = ["wall", "stile (2020)", "rail (2020)", "30 mm spacer", "adapter", "panel"]
+    xs2 = [sx + 15, sx + 40, sx + 60, sx + 85, sx + 102, sx + 112]
+    for i, (t, lx) in enumerate(zip(labels, xs2)):
+        ty = sy + 30 + i * 34
+        s.line([(lx, ty + 10), (sx + 200, ty)], stroke=GREY, sw=1)
+        s.text(sx + 206, ty + 5, t, size=13, anchor="start")
+    s.text(sx + 70, sy + 640, "about 95 mm wall to panel face", size=14)
+    s.save("frame.svg")
+
 if __name__ == "__main__":
     rear_two_supplies()
     rear_single_supply()
     panel_detail()
     mounting()
+    frame()
     print("wrote", sorted(p.name for p in OUT.glob("*.svg")))
