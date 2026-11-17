@@ -56,8 +56,8 @@ With the LRS-100-5s, all-white can't reach 100%. The firmware dims any frame tha
 | --- | --- | --- |
 | Mean Well LRS-100-5 | 2 | You have these |
 | IEC inlet with switch and fuse, plus a 3-prong cord | 1 or 2 | Or one switched power strip; one switch for the whole wall |
-| DIN-rail distribution block, lever terminals, 2 in / 12 out as **two isolated 1-in / 6-out halves** (JANDECCN KV4212, 32 A, 28-12 AWG) | 2 | One for +5 V, one for GND. Orange half = supply A, blue half = supply B |
-| 35 mm DIN rail, about 15 cm | 1 | Screwed to the supply crossbar between the supplies |
+| Lever-terminal distribution block (a DIN-rail part, screwed to the frame's rail here), 2 in / 12 out as **two isolated 1-in / 6-out halves** (JANDECCN KV4212, 32 A, 28-12 AWG) | 2 | One for +5 V, one for GND. Orange half = supply A, blue half = supply B |
+| M3 drop-in T-nuts for 2020 and M3 x 8 screws | 4 | The blocks onto the lower seam rail, through their 4 mm holes |
 | 14 AWG stranded wire, red and black | about 1 m each | Supply to its half of each block |
 | Inline blade fuse holder, 14 AWG, with 20 A fuse | 2 | On each supply's +V feed, close to the supply |
 | 14 AWG black wire | 30 cm | Joins the two supplies' grounds (second −V screw to second −V screw) |
@@ -94,9 +94,9 @@ full output from 115 V up, so it runs from a US outlet as it comes.
 ### Steps
 
 1. Mount both supplies as in [`assembly-guide.md`](assembly-guide.md) section 6: on their
-   adapters on the frame's crossbar, with air around them, below the wall, never squeezed
-   behind the panels. Clip the two blocks onto the DIN rail between them and label them
-   "+5 V" and "GND", and each half "A (panels 1-6)" and "B (panels 7-12)".
+   adapters on the back of the lower seam rail, with the gap behind the frame left open.
+   Screw the two blocks to the rail between them and label them "+5 V" and "GND", and each
+   half "A (panels 1-6)" and "B (panels 7-12)".
 2. AC side, cord unplugged: black (hot) to L, white (neutral) to N, green to ⏚. Fit the
    terminal cover.
 3. Each supply's feeds, 14 AWG: +V (terminal 6) through the 20 A fuse to its half's input on

@@ -79,7 +79,7 @@ Figures from the seller spec, for a 1280 x 480 mm wall (0.614 m²):
 | Supply | **Two Mean Well LRS-100-5 (5 V, 18 A, 90 W each)**: A feeds chain panels 1 to 6 (top row plus the right half of the middle row), B feeds panels 7 to 12 | Below the seller's "200 W per 6 to 7 panels", so the software power cap is required, not optional. Budget is 15.3 A per supply (85% of 18 A). At 50% brightness the PR whiteboard draws about 2.5 A per supply; an all-white image would need about 14.7 A, and the cap lets all-white images reach about 52% |
 | Margin check | By the seller's own **average** figure (240 W/m²), 6 panels draw about 14.7 A, against the 15.3 A budget per supply. That is thin: the average figure is the seller's, not a measurement | In the spike, measure one panel at full white. If it draws more than about 2.5 A, move to LRS-200-5 (40 A) or LRS-350-5 (60 A) supplies before building |
 | Supply wiring | Closed-frame supplies have exposed AC terminals: mount them in a grounded enclosure and connect the FG (earth) terminal. Trim V.ADJ so the panels see about 5.1 V under load. A 20 A fuse on each DC feed protects the wiring | Tie the two supplies' grounds together, never their +5 V outputs |
-| Distribution | Each panel's own power pigtail to a DIN-rail lever block (one for +5 V and one for GND, each with an isolated half per supply); 14 AWG from each supply to its half | Don't daisy-chain power through panel pigtails |
+| Distribution | Each panel's own power pigtail to a lever-terminal distribution block (one for +5 V and one for GND, each with an isolated half per supply); 14 AWG from each supply to its half | Don't daisy-chain power through panel pigtails |
 | Ground | The ESP32 board's GND tied to panel ground | Without a shared ground the data lines glitch |
 | Software cap | Brightness setting; a per-file cap for media (the console measures the brightest frame's current on upload, `peak_a`, and the wall plays the whole slide at `slideBrightness(peak_a, setting, power)`); and a per-frame limiter as a backstop that dims any frame that would push a supply past its budget (15.3 A for each of today's two supplies; the "Power supplies" setting, `settings.power`, sets one or two supplies, their rating and the budget share; `web/power.js` is the model the firmware ports) | Keeps a bright image from tripping a supply's overload protection, which shows as flicker or a reset. Capping the whole slide keeps a video's brightness steady instead of pumping frame to frame |
 
@@ -107,8 +107,9 @@ The LED wall (1.28 m wide) is smaller than the chalkboard it replaces, so the ta
 - Fused distribution (20 A per feed), 14 AWG wire, ring terminals, a grounded enclosure for
   the two LRS-100-5 supplies (see Power above)
 - HUB75 ribbons: panels usually ship with short ones; rows need 2 to 3 slightly longer ones
-- Mounting: a wooden frame of 1x2 furring strip, the panels held at their corners by printed
-  junction mounts (`docs/assembly-guide.md` section 6, `hardware/`)
+- Mounting: two 2020 seam rails directly behind the panels and two short stiles, held 30 mm
+  off the wall by printed blocks; the supplies and power blocks ride on the lower rail's back
+  (`docs/assembly-guide.md` section 6, `hardware/`)
 - Optional: smoked acrylic or diffuser film (softens pixels, raises perceived contrast)
 - CR1220/SH1.0 RTC battery (keeps time across power cuts)
 
