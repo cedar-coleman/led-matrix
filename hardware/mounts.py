@@ -1,7 +1,7 @@
-"""Junction mounts that hold the panels to the 2020 frame (docs/assembly-guide.md, section 6).
+"""Junction mounts that hold the panels to the wooden frame (docs/assembly-guide.md, section 6).
 
 Each mount screws onto the panels' M3 posts from the back and carries an M5 heat-set insert,
-which takes the 30 mm standoff that the rail screw goes into. Three parts:
+which takes the M5 x 25 screw driven through the rail from behind. Three parts:
 
   quad    where four panel corners meet: four posts on a square, insert in the middle
   pair    two posts across a seam: at the wall's outer edges, and at the mid-edge posts

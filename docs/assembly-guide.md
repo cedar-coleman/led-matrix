@@ -72,7 +72,8 @@ and the controller are at the **top left**.
 6. **Controller power**:
    - While testing at the bench: power it from the laptop through its **USB-C data** port and
      leave the supply lead disconnected.
-   - Installed: a short red/black lead with a **2 A inline fuse** from bus A to the board's
+   - Installed: a short red/black lead with a **2 A inline fuse** from supply A's second
+     +V and −V terminals to the board's
      two M3 screen-power terminals (5 V and GND), with M3 ring terminals. Then you don't need
      USB at all; firmware updates go over Wi-Fi.
    - Don't connect the supply lead and a USB cable at the same time, and never plug a charger
@@ -88,17 +89,22 @@ and the controller are at the **top left**.
 Supply A powers panels 1 to 6 (front view: the top row and the left half of the middle row),
 supply B panels 7 to 12. The firmware's power limiter assumes this split.
 
-1. Each supply's +V goes through a **20 A fuse** to its **+ bus bar**; its −V goes to its
-   **GND bus bar**. 14 AWG wire, or 12 AWG if the run is longer than 1 m.
-2. Each panel's own lead plugs into its 5 V socket. Screw its red fork to its supply's + bar
-   and its black fork to the GND bar, **in the slot with the panel's number** (bus A slots
-   1-6, bus B slots 7-12, as in the drawing). With two-plug splitter leads, one lead feeds a
-   pair: 1+2, 3+4, 5+6, 7+8, 9+10, 11+12.
-3. **Join the two GND bus bars** with a 14 AWG jumper: the ribbon from panel 6 to panel 7
-   crosses supplies, so the grounds must be common. **Never join the + bars.**
-4. Mount each bus bar pair on insulated standoffs **behind the wall, close to its six
-   panels** (A behind the upper half, B behind the lower half) so every panel lead reaches.
-   The drawing shows them below the wall only to keep it readable.
+Two DIN-rail lever blocks on the supply crossbar distribute the power: one for +5 V, one for
+GND. Each block is two isolated halves (orange and blue), so one block serves both supplies
+without connecting them. Full steps in `power-wiring-guide.md` section 3.
+
+1. Each supply's +V goes through a **20 A fuse** to its half of the **+5 V block** (supply A
+   orange, supply B blue); its −V goes to its half of the **GND block**. 14 AWG wire.
+2. Each panel's own lead plugs into its 5 V socket. Its red wire goes into its supply's half
+   of the +5 V block and its black wire into the same half of the GND block, **at the output
+   with the panel's number** (1-6 orange, 7-12 blue, as in the drawing). With two-plug
+   splitter leads, one lead feeds a pair: 1+2, 3+4, 5+6, 7+8, 9+10, 11+12.
+3. **Join the grounds** with a 14 AWG wire between the two supplies' second −V terminals: the
+   ribbon from panel 6 to panel 7 crosses supplies, so the grounds must be common. **Never
+   join the +V side.**
+4. The top-row leads run about 1 m down to the blocks: extend any that don't reach in 16 or
+   18 AWG, and set the supply's V.ADJ so the farthest panel reads about 5.0 V
+   (`power-wiring-guide.md` test 5).
 5. AC: black (hot) to L, white (neutral) to N, green to ⏚, through one switched, fused inlet
    or power strip for the whole wall.
 
@@ -115,27 +121,29 @@ bars where the panels' forks screw on. After switching, set Settings → Power s
 
 ![Mounting and cooling](diagrams/mounting.svg)
 
-### The wall: aluminium extrusion frame (recommended)
+### The wall: wooden frame
 
-![Aluminium extrusion frame](diagrams/frame.svg)
+![Wooden frame](diagrams/frame.svg)
 
-A 2020 frame holds every panel at its corners on 30 mm standoffs, carries the bus bars and
-the supplies, and hangs on the wall as one unit.
+A ladder of 1x2 furring strip (19 x 38 mm actual) holds every panel at its corners, carries
+the supplies and the DIN blocks, and hangs on the wall as one unit. It costs a few boards and
+some screws, and needs a saw and a drill.
 
-- **Rails behind every line where panels meet.** Four horizontal 2020 rails: two centred on
-  the row seams, and two centred 15 mm in from the wall's top and bottom edges, where the
-  edge mounts' inserts are. Each rail stops 5 mm short of the wall's sides, so none of the
-  frame shows from the front. A frame round the outside only would leave panels 6 and 7
-  (the middle of row 2) unsupported: they touch no outer edge.
-- **Stiles behind the rails** (wall side): three vertical 2020 lengths, joined to each rail
-  at the 12 crossings with two right-angle 2020 corner brackets (one above the rail, one
-  below), each bridging the stile's front face and the rail's top or bottom face. Flat
-  T-plates don't work here: the rails and stiles sit in different planes. Running them on about 330 mm below the
-  bottom rail carries a crossbar for the supplies, so they sit at least 100 mm under the panels.
+- **Rails behind every line where panels meet.** Four horizontal 1x2 rails, laid flat: two
+  centred on the row seams, and the top and bottom ones flush with the wall's top and bottom
+  edges. Each rail stops 5 mm short of the wall's sides, so none of the frame shows from the
+  front. A frame round the outside only would leave panels 6 and 7 (the middle of row 2)
+  unsupported: they touch no outer edge.
+- **Stiles behind the rails** (wall side): three vertical 1x2 lengths, glued and screwed to
+  each rail where they cross (two 32 mm wood screws from the stile's back, pre-drilled). They
+  run on 330 mm below the bottom rail to carry the supply crossbar, so the supplies sit at
+  least 100 mm under the panels. **Place them as in the drawing** (left edges 100, 420 and
+  1142 mm from the wall's left edge, seen from behind): there they miss every mount's screw,
+  the controller board and the panels' ribbon headers.
 - **Junction mounts** (printed parts in [`hardware/`](../hardware/README.md)). Each panel has
   six M3 posts on its back: one about 6 mm in from each corner and one at the middle of each
   long edge. A mount screws onto the posts of the panels that meet there (M3 x 10 into
-  counterbores, no washers) and carries an M5 heat-set insert for the standoff:
+  counterbores, no washers) and carries an M5 heat-set insert for the rail screw:
 
   ![Junction mounts](diagrams/junction-mounts.png)
 
@@ -148,70 +156,58 @@ the supplies, and hangs on the wall as one unit.
 
   A pair's and a corner's insert sits 9 mm in from its posts, clear of the screw heads, so
   every insert lands on a rail: the side pairs and the quads on the seam rails, the top and
-  bottom pairs and the corners on the edge rails. Print them in **PETG or ASA**, not PLA:
-  they carry the wall's weight and the panel backs get warm.
-- **How they fix to the rails.** A screw can't reach a T-nut from the panel side, so the
-  rails are drilled instead. Lay the panel assembly face down, screw a 30 mm M5 standoff
-  (male-female) into each mount's insert, lay the rails on top, and drive an M5 screw from
-  the back through a **5.5 to 6.5 mm hole drilled through the rail** into each standoff. Mark
-  the holes from the assembled panels; the slightly oversized hole takes up about 0.5 mm of
-  error. Then add the stiles and hang the whole unit. To service a panel, take the unit down
-  and lay it face down (two people, about 11 kg).
-- **Which junctions to fix.** Every panel post that has a mount on it is held by that mount;
-  only the mounts connect to the frame. Minimum 14: all 10 on the two seam rails (they hold
-  every middle-row corner and half of each outer panel) plus the 4 outer corners.
-  Recommended: all 20, so the top and bottom seams stay flush. The 8 optional mid-edge pairs
-  hold the long row seams halfway along; add them if a seam bows. Fit everything loosely, push the panels flush,
-  then tighten; the T-nuts can slide a little, so the plastic panels and aluminium frame
-  don't fight as the temperature changes.
-- **Stile joints.** Two side stiles carry the load (a 1.27 m 2020 rail sags only about
-  0.7 mm under its share of the panels, by beam calculation); the centre stile adds a middle
-  wall fixing and support for the supply crossbar. Join each rail-stile crossing with two
-  metal right-angle corner brackets: these joints carry the whole wall in shear, and printed
-  plastic clamped under a screw slowly creeps and loosens. Print the rest (cable clips, bus
-  bar standoffs, end caps, adapters, wall spacers); if you do print crossing joints, use ASA
-  or PC, 8 mm or thicker under the screws, metal washers, and re-tighten after a week.
-- **30 mm standoff** between the panel backs and the rails clears the ribbon and power plugs,
-  lets the two row-to-row ribbons pass over the seam rails, and leaves an air gap behind
-  the panels. Wall to panel face is about 95 mm.
-- **Bus bars** mount on the seam rails on insulated standoffs in T-nuts: bus A on the upper
-  seam rail behind its panels, bus B on the lower one. Supply feeds run down the stiles,
-  clipped into the slots.
-- **Hanging it:** angle brackets from the stiles to the wall, or a French cleat across the
-  top rail. The panels (about 6 kg, an estimate), about 3.7 kg of extrusion and the supply
-  supplies add up to roughly 10 kg: use anchors rated well above that.
+  bottom pairs and the corners 15 mm in from the wall's edges, on the edge rails. Print them
+  in **PETG or ASA**, not PLA: they carry the wall's weight and the panel backs get warm.
+- **How they fix to the rails.** Lay the panels face down with all the mounts on, lay the
+  rails on the mounts, and mark each insert's position on the rail. Drill a **6 mm hole
+  through the rail** at each mark (the slightly oversized hole takes up about 0.5 mm of
+  error), lay the rails back, and drive an **M5 x 25 screw with a washer** from the rail's
+  back into each insert. Then add the stiles. To service a panel, take the unit down and lay
+  it face down (two people, about 10 kg).
+- **Which junctions to fix.** Only the mounts connect the panels to the frame. Minimum 14:
+  all 10 on the two seam rails (they hold every middle-row corner and half of each outer
+  panel) plus the 4 outer corners. Recommended: all 20, so the top and bottom seams stay
+  flush. The 8 optional mid-edge pairs hold the long row seams halfway along; add them if a
+  seam bows. Fit everything loosely, push the panels flush, then tighten.
+- **Gaps.** The mount's 9 mm is the gap between the panel backs and the rails: enough for the
+  two row-to-row ribbons and the power leads to pass under a rail. The panels' headers and
+  power sockets sit in the middle of each panel, between the rails. Wall to panel face is
+  about 62 mm, and the air gap behind the panels is open at the top and bottom, so warm air
+  rises out.
+- **Hanging it.** Two D-rings or keyhole hangers on the backs of the outer stiles near the
+  top, on screws into studs or anchors rated well above 10 kg. Then one screw through each
+  outer stile's extension into the wall below the panels, where you can reach it from the
+  front; it stops the frame lifting off. The panels (about 6 kg, an estimate), about 2.5 kg
+  of wood and the supplies add up to roughly 10 kg.
+- **Wood near the electronics is fine here.** Nothing in this build runs hotter than the
+  supply cases, which stay cool enough to touch (test 5 in the power guide), and the
+  supplies stand off the crossbar on their adapters. Paint the frame black if you'd rather
+  not see it from the side.
 
 | Cut list | Quantity | Length |
 | --- | --- | --- |
-| 2020 rail | 4 | about 1270 mm (wall width less 5 mm each end) |
-| 2020 stile | 3 | about 830 mm (wall height less the insets, plus 330 mm below for the supplies) |
-| 2020 supply crossbar | 1 | about 1150 mm, across the outer stiles below the panels (from the spare length) |
+| 1x2 rail | 4 | 1270 mm (wall width less 5 mm each end) |
+| 1x2 stile | 3 | 810 mm (the wall's 480 mm plus 330 mm below for the supplies) |
+| 1x3 supply crossbar | 1 | about 1220 mm, across the stile extensions |
+
+Four 8 ft (2.44 m) 1x2 boards give the rails and stiles (one rail and one stile from each);
+one 8 ft 1x3 gives the crossbar.
 
 | Hardware | Quantity |
 | --- | --- |
 | Junction mounts (`hardware/stl`), PETG or ASA, an M5 heat-set insert each | 20: 6 quad, 10 pair, 4 corner (plus 8 pair if you fit the optional ones) |
-| M5 standoffs, 30 mm, male-female | 20 (28) |
-| M5 x 30 screws and washers (through the rail into the standoff) | 20 (28) |
+| M5 x 25 socket head screws and washers (from the rail's back into each insert) | 20 (28) |
 | M3 x 10 socket head screws into the panels' posts (no washers: the mounts are counterbored) | 48 (64) |
-| M5 drop-in T-nuts and screws (bus bars, cable clips, supply adapters, crossbar) | about 25 |
-| Metal 2020 right-angle corner brackets (2 per rail-stile crossing) | 24 |
+| Wood glue and 32 mm (#8 x 1-1/4") wood screws | 24 for the crossings, plus the crossbar, DIN rail and supply adapters |
+| D-rings or keyhole hangers, with wall screws or anchors rated well above 10 kg | 2, plus 2 screws for the stile extensions |
 
 **Test-fit one first.** The 6 mm post position is scaled from the supplier's photo of the
 panel's back, so it is good to about 1 mm. Print one quad and screw it onto four panels
 laid face down: if the screws start without forcing, print the rest. If not, measure post
 centre to panel edge, set `POST_INSET` in `hardware/mounts.py` and run it again (see
-[`hardware/README.md`](../hardware/README.md)). While the panels are face down, check how far
-the connectors stand off the back: if more than about 25 mm, lengthen the standoffs.
-
-### The wall: battens (simpler alternative)
-
-- Join the panels with DJDevon3's printed brackets
-  ([Printables 578204](https://www.printables.com/model/578204-hub75-5mm-pitch-4-panel-bracket)),
-  screwed into the panels' M3 posts: 6 inside junctions and 10 edge junctions.
-- Hang the assembly on two horizontal battens (20 mm, wood or 2020 extrusion) screwed to the
-  wall, which leaves an air gap behind the panels.
-- The whole wall is roughly 6 kg (12 panels at about 0.4 to 0.5 kg each, plus brackets).
-  That's an estimate; weigh one panel. Use wall anchors rated well above it.
+[`hardware/README.md`](../hardware/README.md)). While the panels are face down, check that
+nothing on the back within 20 mm of a seam stands taller than 9 mm; if something does, the
+rail would press on it, so raise `PLATE_T` to clear it.
 
 ### The supplies (LRS-100-5)
 
@@ -232,15 +228,14 @@ cooling. (The UHP-500-5 is different: it does need its plate, see below.)
 
 Recommended mount, as in the drawings:
 
-1. **A crossbar** on the frame: one horizontal 2020 between the outer stile extensions,
-   below the panels (the spare 1500 mm length from the second extrusion pack covers it).
-   Without the frame, any metal or wood batten on the wall does the same job.
+1. **A crossbar** on the frame: a 1x3 screwed across the stile extensions, below the panels.
 2. **Bolt each supply's base to a small adapter** (a short piece of aluminium flat bar, or a
-   printed PETG/ASA bracket), then the adapter to the crossbar with M5 T-nuts. Mean Well
+   printed PETG/ASA bracket), then screw the adapter to the crossbar. Mean Well
    allows **3 mm at most** into the case through the base's 2 x M3 holes, so the screw length
    is the adapter's thickness plus 3 mm, no more. The 3 x M3 holes in one side (5 mm at most)
    are an alternative.
-3. Mount the AC inlet and the fuse holders on the same crossbar.
+3. Mount the AC inlet, the fuse holders and a short 35 mm DIN rail for the two blocks on the
+   same crossbar, the rail between the supplies.
 4. **Below the wall, at least 100 mm under the panels**, where the air is coolest. Don't put
    supplies behind the panels: the panels heat that air.
 5. Keep **25 mm clear around each supply's mesh**, nothing on top of it, and an air gap
@@ -284,7 +279,7 @@ wall, with an air gap behind it and clear air around it.
 
 ## 8. Parts list with Amazon links
 
-Quantities are for the two LRS-100-5 supplies and the extrusion frame; the UHP-500-5
+Quantities are for the two LRS-100-5 supplies and the wooden frame; the UHP-500-5
 differences are at the end. These are listings found by search, not products I have
 tested: specs are the sellers' claims, and prices and stock change, so check each listing's
 size and contents before ordering. Links reused from DJDevon3's build are marked.
@@ -293,11 +288,11 @@ size and contents before ordering. Links reused from DJDevon3's build are marked
 
 | Part | For | Qty | Link | Check |
 | --- | --- | --- | --- | --- |
-| 6-terminal bus bar with cover, red and black pair (M4 screws, 2 M6 studs, 150 A DC) | + and GND bars, one pair per supply | 2 pairs | [PSEQT pair](https://www.amazon.com/dp/B08HRGHTN1) | Your panel leads' fork terminals fit an M4 screw (most #8 forks do). Alternative single bar: [JOYHO](https://www.amazon.com/dp/B07S2F26X3) |
+| DIN-rail lever distribution block, 2 in / 12 out as two isolated 1-in / 6-out halves, 32 A, 28-12 AWG (JANDECCN KV4212) | +5 V block and GND block | 2 | [JANDECCN](https://www.amazon.com/dp/B0H69VHV3T) | Check the halves are isolated before wiring (`power-wiring-guide.md` section 3) |
+| 35 mm DIN rail | Holds the two blocks on the crossbar | about 15 cm | any electrical supplier | |
 | Inline ATC fuse holders, 14 AWG, with assorted fuses (1 to 30 A) | 20 A on each supply's +V feed; 2 A on the controller lead | 1 kit | [SIM&NAT 10-pack + 50 fuses](https://www.amazon.com/dp/B07FQCBSJ5) | Includes both 20 A and 2 A fuses |
-| 12 AWG silicone wire, red and black, 25 ft each | Supply-to-bus feeds, GND jumper | 1 | [BNTECHGO](https://www.amazon.com/dp/B07BS5YNCF) | |
-| Ring terminals, 12-10 AWG, M6 | Feeds onto the bus bars' M6 studs | 1 pack | [Hilitchi 100 pcs](https://www.amazon.com/dp/B01D8EJX3E) | |
-| Ferrule crimping kit (AWG 23-10) | Wire ends into the supplies' terminal screws | 1 | [Preciva](https://www.amazon.com/dp/B07XBLGPCY) | |
+| 12 AWG silicone wire, red and black, 25 ft each | Supply-to-block feeds, ground join, lead extensions | 1 | [BNTECHGO](https://www.amazon.com/dp/B07BS5YNCF) | 12 AWG is the blocks' largest size; 14 AWG is enough |
+| Fork or ring terminals for the supplies' screws (M3.5), 12-10 AWG | Feeds and the ground join at the supplies | 1 pack | any crimp terminal assortment | The lever blocks take bare stranded wire |
 | AC inlet with switch and fuse (IEC C14) | One switch for the wall | 1 | [DJDevon3's pick](https://www.amazon.com/dp/B07RQV2NPN) | Plus any 3-prong PC power cord |
 | HUB75 ribbon, 30 cm | Row-to-row hops (panel 4 to 5, 8 to 9) | 2 or more | [DJDevon3's pick](https://www.amazon.com/dp/B07FZWH9S6) | The panels' own 20 cm ribbons do the rest |
 | DC clamp meter, 2 A / 20 A / 100 A DC ranges | Current tests | 1 | [UNI-T UT210E](https://www.amazon.com/dp/B0188WD1NE) | Must say DC current; 1 mA resolution on the 2 A range |
@@ -306,12 +301,12 @@ size and contents before ordering. Links reused from DJDevon3's build are marked
 
 | Part | For | Qty | Link | Check |
 | --- | --- | --- | --- | --- |
-| 2020 V-slot extrusion, 1500 mm, 4-pack | 4 rails (cut to 1270), 3 stiles (cut to 830), 1 crossbar (cut to 1150) | 2 packs (all 8 lengths used) | [MECCANIXITY 4 x 1500 mm](https://www.amazon.com/dp/B0GFDP1Z34) | Cut square with a metal-cutting blade, or buy cut to length from an extrusion supplier |
-| 2020 right-angle corner brackets with M5 T-nuts and screws | Rail-stile crossings, 2 each | 24 (3 x 10-sets) | [KOOTANS 10-set](https://www.amazon.com/dp/B07PZKRTYZ) | |
-| M5 drop-in T-nuts, 2020 series | Bus bars, supply adapters, crossbar, cable clips | 1 pack | [60 pcs](https://www.amazon.com/dp/B0FKWJQ5NS) | |
+| 1x2 furring strip or common board (19 x 38 mm), 8 ft | 4 rails (cut to 1270), 3 stiles (cut to 810) | 4 | any hardware store | Pick straight boards |
+| 1x3 board (19 x 64 mm), 8 ft | Supply crossbar (cut to about 1220) | 1 | any hardware store | |
+| Wood glue and 32 mm (#8 x 1-1/4") wood screws | Rail-stile crossings (2 each), crossbar, DIN rail, supply adapters | 1 box | any hardware store | Pre-drill near the board ends |
+| D-rings or keyhole hangers, and wall screws or anchors rated well above 10 kg | Hanging the frame | 2, plus 2 screws for the stile extensions | any hardware store | Into studs where you can |
 | M5 heat-set inserts | One per junction mount | 20, or 28 with the optional pairs (plus spares) | [initeq M5, 20 pcs](https://www.amazon.com/dp/B077CJ26FL) | The mounts print a 6.4 mm hole; if the insert maker gives another size, set `INSERT_D` in `hardware/mounts.py` |
-| M5 standoffs, 30 mm, male-female | Mount to rail | 20 (28) | [Brass M5, choose 30 mm](https://www.amazon.com/dp/B0GYQN95GB) | Pick M5 and 30 mm in the listing's options; the male thread adds about 8 mm |
-| M5 x 30 socket head screws | Through the drilled rail into each standoff | 20 (28) | [Newport 50-pack](https://www.amazon.com/dp/B082GH7JW6) | |
+| M5 x 25 socket head screws, with washers | Through the drilled rail into each mount's insert | 20 (28) | any hardware store | 19 mm rail plus about 6 mm into the insert |
 | M3 x 10 socket head screws | Mounts into the panels' posts | 48 (64) | [100 pcs with washers](https://www.amazon.com/dp/B091N1J6F8) | The washers aren't needed |
 | M3 x 6 screws (adapter 3 mm thick + at most 3 mm into the case) | Supplies onto their adapters | 4 | from any M3 assortment | Match the length to your adapter: never more than 3 mm into the supply |
 | Aluminium flat bar, about 25 x 3 mm, or printed PETG/ASA | Supply adapters | 2 short pieces | any hardware store | |
@@ -320,7 +315,8 @@ size and contents before ordering. Links reused from DJDevon3's build are marked
 ### If you move to one UHP-500-5
 
 - The supply: [Mean Well UHP-500R-5 on Amazon](https://www.amazon.com/dp/B07ZJCSF65), or the UHP-500-5 from a distributor (TRC Electronics, Digi-Key).
-- Bus bars: 5 pairs instead of 2 (one main pair plus one per branch).
+- Bus bars: 5 pairs (one main pair plus one per branch), in place of the two DIN blocks: one
+  supply's 60 A and more needs a heavier distribution point.
 - Aluminium plate: 450 x 450 x 3 mm, as Mean Well requires for this supply: a 24 x 24 in 1/8 in 6061 sheet, cut down.
 - 8 AWG wire, red and black, about 1 m each, and 8 AWG ring terminals for the supply-to-main-bus leads.
 - Thermal grease between the supply and its plate.

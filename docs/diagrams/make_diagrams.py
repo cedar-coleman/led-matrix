@@ -13,6 +13,7 @@ COLS, ROWS = 4, 3
 RED, BLACK, BLUE = "#d62828", "#222222", "#1f6fd1"
 ORANGE, GREY, TEAL = "#f08c00", "#8a8a8a", "#009696"
 FUSE = "#f2c14e"
+WOOD, WOOD_EDGE = "#dcb98f", "#8a5a2b"
 
 
 class Svg:
@@ -153,6 +154,23 @@ def bus(s, x, y, label, n, first=1):
     return w
 
 
+def din_block(s, x, y, label, color):
+    """A 2-in / 12-out lever block drawn as its two isolated halves: orange (supply A, panels
+    1-6, input on the left) and blue (supply B, panels 7-12, input on the right). Returns the
+    y of the inputs."""
+    w, h = 240, 44
+    s.rect(x, y, w / 2, h, fill="#fde3c4", stroke=color, sw=2, rx=3)
+    s.rect(x + w / 2, y, w / 2, h, fill="#d3e4f8", stroke=color, sw=2, rx=3)
+    for i in range(12):
+        cx = x + 12 + i * 19.6
+        s.circle(cx, y + 12, 5, fill="white", stroke=color)
+        s.text(cx, y - 6, str(i + 1), size=11, weight="bold")
+    s.rect(x - 14, y + h / 2 - 7, 14, 14, fill=ORANGE, stroke=color, sw=1.5)
+    s.rect(x + w, y + h / 2 - 7, 14, 14, fill=BLUE, stroke=color, sw=1.5)
+    s.text(x + w / 2, y + h - 6, label, size=13, weight="bold", fill=color)
+    return y + h / 2
+
+
 def lrs(s, x, y, name):
     """Mean Well LRS-100-5 footprint (129 x 97 mm) with its 7-way terminal block on the left."""
     s.rect(x, y, 129 * 1.6, 97 * 1.6, fill="#eeeeee", stroke=BLACK, sw=2, rx=4)
@@ -169,52 +187,52 @@ def lrs(s, x, y, name):
 
 
 def rear_two_supplies():
-    s = Svg(1600, 1180)
+    s = Svg(1600, 1300)
     ox, oy = 160, 90
     s.text(800, 40, "Rear view: two Mean Well LRS-100-5 (as seen standing behind the wall)", size=26, weight="bold")
-    draw_wall(s, ox, oy, tag=lambda n: f"lead to bus {'A' if n <= 6 else 'B'}, slot {n}")
-    # bus bars behind the wall: A behind the top-right area (rear view top-left half), B lower
-    a_x, a_y = ox + 30, oy + 3 * PH + 50
-    b_x, b_y = ox + 2 * PW + 30, oy + 3 * PH + 50
-    wa = bus(s, a_x, a_y, "Bus A: panels 1-6 (slot = panel number)", 6, 1)
-    wb = bus(s, b_x, b_y, "Bus B: panels 7-12 (slot = panel number)", 6, 7)
-    # supplies on the plate below
+    draw_wall(s, ox, oy, tag=lambda n: f"to output {n}")
+    # supplies and the two DIN blocks on the crossbar below the wall
     plate_y = oy + 3 * PH + 175
-    s.rect(ox - 20, plate_y - 20, 4 * PW + 40, 310, fill="#f4f4f4", stroke=GREY, sw=2, dash="8,6")
-    s.text(ox + 4 * PW + 10, plate_y + 5, "supplies below the wall", size=16, anchor="end", fill=GREY)
-    A = lrs(s, ox + 60, plate_y + 30, "Supply A")
-    B = lrs(s, ox + 2 * PW + 60, plate_y + 30, "Supply B")
-    for sup, bx, by, w in ((A, a_x, a_y, wa), (B, b_x, b_y, wb)):
-        # +V: fuse then up to + bus
-        fx = sup["x"] + 230
-        s.line([(sup["x"], sup["+V"]), (sup["x"] - 40, sup["+V"]), (sup["x"] - 40, plate_y + 250),
-                (fx, plate_y + 250)], stroke=RED, sw=5)
-        s.rect(fx, plate_y + 240, 46, 20, fill=FUSE, stroke=BLACK, sw=2, rx=4)
-        s.text(fx + 23, plate_y + 285, "20 A fuse", size=14)
-        s.line([(fx + 46, plate_y + 250), (bx + w + 40, plate_y + 250), (bx + w + 40, by + 11), (bx + w, by + 11)],
-               stroke=RED, sw=5)
-        # -V straight up to - bus
-        s.line([(sup["x"], sup["-V"]), (sup["x"] - 20, sup["-V"]), (sup["x"] - 20, by + 45), (bx, by + 45)],
-               stroke=BLACK, sw=5)
-        # AC
+    s.rect(ox - 20, plate_y - 20, 4 * PW + 40, 420, fill="#f4f4f4", stroke=GREY, sw=2, dash="8,6")
+    s.text(ox + 4 * PW + 10, plate_y + 5, "below the wall, on the supply crossbar", size=16, anchor="end", fill=GREY)
+    bx = ox + 360
+    yp = din_block(s, bx, plate_y + 20, "+5 V block", RED)
+    yg = din_block(s, bx, plate_y + 90, "GND block", BLACK)
+    A = lrs(s, ox + 60, plate_y + 150, "Supply A")
+    B = lrs(s, ox + 2 * PW + 60, plate_y + 150, "Supply B")
+    for sup in (A, B):
         s.line([(sup["x"] + 6, sup["L"]), (sup["x"] - 70, sup["L"])], stroke=GREY, sw=3)
         s.line([(sup["x"] + 6, sup["N"]), (sup["x"] - 70, sup["N"])], stroke=GREY, sw=3)
         s.line([(sup["x"] + 6, sup["FG"]), (sup["x"] - 70, sup["FG"])], stroke="#2b9348", sw=3)
         s.text(sup["x"] - 74, sup["N"] + 5, "to cord", size=13, anchor="end", fill=GREY)
-    # ground jumper between the two - buses
-    s.line([(a_x + wa, a_y + 45), (b_x - 50, b_y + 45)], stroke=BLACK, sw=4, dash="4,4")
-    s.text((a_x + wa + b_x) / 2, a_y + 36, "GND jumper (never join +5 V)", size=14)
-    # controller power lead
+    # supply A: +V through its fuse to the orange half of the + block, -V to the orange half of GND
+    ax = A["x"]
+    s.line([(ax, A["+V"]), (ax - 40, A["+V"]), (ax - 40, yp), (bx - 14, yp)], stroke=RED, sw=5)
+    s.rect(ax + 90, yp - 10, 46, 20, fill=FUSE, stroke=BLACK, sw=2, rx=4)
+    s.text(ax + 113, yp - 16, "20 A fuse", size=13)
+    s.line([(ax, A["-V"]), (ax - 20, A["-V"]), (ax - 20, yg), (bx - 14, yg)], stroke=BLACK, sw=5)
+    # supply B: the same into the blue halves, from the right
+    bx2, rx = B["x"], bx + 254
+    s.line([(bx2, B["+V"]), (bx2 - 20, B["+V"]), (bx2 - 20, yp), (rx, yp)], stroke=RED, sw=5)
+    s.rect(rx + 6, yp - 10, 46, 20, fill=FUSE, stroke=BLACK, sw=2, rx=4)
+    s.text(rx + 29, yp - 16, "20 A", size=13)
+    s.line([(bx2, B["-V"]), (bx2 - 45, B["-V"]), (bx2 - 45, yg), (rx, yg)], stroke=BLACK, sw=5)
+    # ground join between the supplies' second -V screws, under the supplies
+    gy = plate_y + 360
+    s.line([(ax, A["-V"] + 8), (ax - 10, A["-V"] + 8), (ax - 10, gy), (bx2 - 10, gy), (bx2 - 10, B["-V"] + 8),
+            (bx2, B["-V"] + 8)], stroke=BLACK, sw=4, dash="4,4")
+    s.text(ox + PW + 120, gy - 8, "ground join, second -V to second -V (never join +V)", size=14)
+    # controller power lead from supply A's second terminals
     s.text(ox - 150, oy + 3 * PH + 100, "Board 5 V lead:", size=14, anchor="start", fill=ORANGE, weight="bold")
-    s.text(ox - 150, oy + 3 * PH + 118, "A bus to board", size=14, anchor="start", fill=ORANGE)
-    s.text(ox - 150, oy + 3 * PH + 136, "via 2 A fuse", size=14, anchor="start", fill=ORANGE)
-    s.line([(a_x + 32, a_y), (ox - 40, a_y - 40), (ox - 40, oy + PH / 2 + 30), (ox + 52 - 25, oy + PH / 2 + 15)],
+    s.text(ox - 150, oy + 3 * PH + 118, "supply A's second", size=14, anchor="start", fill=ORANGE)
+    s.text(ox - 150, oy + 3 * PH + 136, "+V / -V, 2 A fuse", size=14, anchor="start", fill=ORANGE)
+    s.line([(ax, A["+V"] + 8), (ox - 40, A["+V"] + 8), (ox - 40, oy + PH / 2 + 30), (ox + 52 - 25, oy + PH / 2 + 15)],
            stroke=ORANGE, sw=3, dash="6,4")
-    legend(s, 1200, 1085, [(BLUE, None, "HUB75 ribbon (20 cm, in a row)"), (BLUE, "10,6", "HUB75 ribbon (30 cm, row to row)"),
+    legend(s, 1200, 1170, [(BLUE, None, "HUB75 ribbon (20 cm, in a row)"), (BLUE, "10,6", "HUB75 ribbon (30 cm, row to row)"),
                            (RED, None, "+5 V (panel lead / feed)"), (BLACK, None, "GND")])
-    s.text(160, 1140, "Each panel's own lead: plug into its 5 V socket, then screw the red fork to the + bar and the black fork to the GND bar,",
+    s.text(160, 1250, "Each panel's own lead: plug into its 5 V socket; red wire into the + block, black into the GND block, both at the",
            size=15, anchor="start", fill=GREY)
-    s.text(160, 1160, "both at the slot with that panel's number. Shaded red: panels on supply A. Shaded blue: supply B.",
+    s.text(160, 1270, "output with that panel's number. The halves are isolated: orange = supply A (shaded red), blue = supply B.",
            size=15, anchor="start", fill=GREY)
     s.save("wall-rear-two-supplies.svg")
 
@@ -325,9 +343,9 @@ def panel_detail():
     s.rect(x + 240, y + 30, 36, 18, fill=FUSE, stroke=BLACK, sw=2, rx=3)
     s.text(x + 258, y + 22, "2 A", size=12)
     s.text(x + 345, y + 45, "+5 V", size=13, anchor="start", fill=RED)
-    s.text(x + 345, y + 62, "from bus A", size=13, anchor="start", fill=RED)
+    s.text(x + 345, y + 62, "from supply A", size=13, anchor="start", fill=RED)
     s.text(x + 345, y + 185, "GND", size=13, anchor="start")
-    s.text(x + 345, y + 202, "from bus A", size=13, anchor="start")
+    s.text(x + 345, y + 202, "from supply A", size=13, anchor="start")
     s.text(x + 170, y + 280, "Screen-power M3 terminals: 5 V (top) and GND (bottom)", size=13)
     s.text(x + 170, y + 300, "The board's back has a keyed 2 x 8 socket that", size=13)
     s.text(x + 170, y + 318, "plugs straight onto panel 1's IN header.", size=13)
@@ -335,7 +353,7 @@ def panel_detail():
     notes = [
         "Ribbons: panel to panel in the same row, use the 20 cm ribbons that came with the panels (IN and OUT are about 10 cm apart).",
         "Row to row (panel 4 to 5, panel 8 to 9) the headers are about 16 cm apart vertically: use a 30 cm ribbon. You need two.",
-        "Power: every panel's own lead plugs into its 5 V socket; the other end (fork terminals) screws to its supply's bus bars.",
+        "Power: every panel's own lead plugs into its 5 V socket; the other end goes into its supply's half of the two DIN blocks.",
         "Board power: plug in the 2 A-fused lead only when the laptop is NOT on USB, or leave it off and power the board from USB while testing.",
     ]
     for i, n in enumerate(notes):
@@ -362,8 +380,8 @@ def mounting():
     s.rect(wx + 38, 110, 16, 480, fill="#333", stroke=BLACK, sw=2)
     for k in range(4):
         s.line([(wx + 64, 560 - k * 120), (wx + 64, 510 - k * 120)], stroke="#e07a5f", sw=2.5, arrow=True)
-    callout(wx + 10, 170, 330, 140, "battens (20 mm) or 2020 extrusion, screwed to the wall")
-    callout(wx + 29, 300, 330, 220, "3D-printed brackets join the panels and hang on the battens")
+    callout(wx + 10, 170, 330, 140, "wooden frame: 1x2 stiles and rails (19 mm each), hung on the wall")
+    callout(wx + 29, 300, 330, 220, "printed junction mounts on the panels' M3 posts, screwed to the rails from behind")
     callout(wx + 46, 380, 330, 300, "LED panels, face out (about 15 mm deep)")
     callout(wx + 64, 450, 330, 380, "warm air rises off the panels' backs", "#e07a5f")
     s.line([(wx + 20, 600), (wx + 20, 680)], stroke=GREY, sw=1.5, dash="4,4")
@@ -377,15 +395,15 @@ def mounting():
         s.line([(wx + 92 + k * 14, 836), (wx + 92 + k * 14, 690)], stroke=TEAL, sw=2, arrow=True, dash="6,4")
     s.line([(wx + 8, 846), (wx + 8, 690)], stroke=TEAL, sw=2, arrow=True, dash="6,4")
     callout(wx + 8, 710, 330, 560, "the crossbar holds the supply off the wall: air flows behind it too")
-    callout(wx + 21, 760, 330, 600, "2020 crossbar plus a small adapter (no extra plate needed for the LRS-100)")
+    callout(wx + 21, 760, 330, 600, "1x3 wooden crossbar plus a small adapter (no extra plate needed for the LRS-100)")
     callout(wx + 51, 790, 330, 640, "supply, base bolted to the adapter (2 x M3, max 3 mm into the case)")
     callout(wx + 120, 700, 330, 680, "cool air in at the bottom, out at the top", TEAL)
     s.text(330, 702, "keep 25 mm clear around the supply's mesh", size=15, anchor="start", fill=TEAL)
     # front view of the supply mounting
     px, py = 1000, 120
     s.text(px + 300, py - 20, "Supply mounting, front view (two LRS-100-5)", size=20, weight="bold")
-    s.rect(px, py + 320, 600, 22, fill="#aeb6bf", stroke="#3d4650", sw=2)
-    s.text(px + 300, py + 370, "2020 crossbar across the stile extensions", size=15)
+    s.rect(px, py + 320, 600, 22, fill=WOOD, stroke=WOOD_EDGE, sw=2)
+    s.text(px + 300, py + 370, "1x3 crossbar across the stile extensions", size=15)
     for i, name in enumerate(("Supply A", "Supply B")):
         sx = px + 50 + i * 290
         s.rect(sx + 60, py + 300, 86, 50, fill="#b8b8b8", stroke=BLACK, sw=1.5, rx=3)
@@ -418,42 +436,43 @@ def mounting():
     s.save("mounting.svg")
 
 
-# ---- extrusion frame ------------------------------------------------------------------
+# ---- wooden frame -----------------------------------------------------------------------
+
 
 def frame():
-    """Rear elevation of the 2020 frame with the panel outline, and a side section."""
-    s = Svg(1760, 1060)
-    s.text(880, 40, "Aluminium extrusion frame (rear view, as seen standing behind the wall)", size=26, weight="bold")
+    """Rear elevation of the wooden frame with the panel outline, and a side section."""
+    s = Svg(1760, 1100)
+    s.text(880, 40, "Wooden frame, 1x2 furring strip (rear view, as seen standing behind the wall)", size=26,
+           weight="bold")
     ox, oy = 80, 110
     W_, H_ = 4 * PW, 3 * PH
-    inset = 15  # top and bottom rail centres, and the edge mounts' inserts (hardware/mounts.py)
+    board = 38   # 1x2 is 19 x 38 mm, laid flat
+    inset = 15   # the edge mounts' inserts (hardware/mounts.py): POST_INSET + OFFSET
     rail_end = 5
-    ext = 330  # stiles run on below the wall to carry the supply crossbar
-    # stiles (behind the rails, wall side)
-    stiles = [ox + 60, ox + W_ / 2 - 10, ox + W_ - 80]
-    for x in stiles:
-        s.rect(x, oy - 10, 20, H_ + 20 + ext, fill="#c9ced6", stroke="#5c6670", sw=2)
+    ext = 330    # stiles run on below the wall to carry the supply crossbar
+    # stiles (behind the rails, wall side): clear of every mount's screw, the board, and the
+    # panels' HUB75 headers (52 mm in from each panel's sides)
+    for x in (ox + 100, ox + 420, ox + 1142):
+        s.rect(x, oy, board, H_ + ext, fill=WOOD, stroke=WOOD_EDGE, sw=2, opacity=0.75)
     # panel outline, dashed
     for row in range(ROWS):
         for bcol in range(COLS):
             s.rect(ox + bcol * PW, oy + row * PH, PW, PH, fill="none", stroke=GREY, sw=1.5, dash="6,5")
             n = chain_number(bcol, row)
-            s.text(ox + bcol * PW + PW / 2, oy + row * PH + PH / 2 + 8, f"panel {n}", size=16, fill=GREY)
-    # rails at the four junction lines
+            dx = (40, 40, 0, -40)[bcol]  # keep the label off the stiles
+            s.text(ox + bcol * PW + PW / 2 + dx, oy + row * PH + PH / 2 + 8, f"panel {n}", size=16, fill=GREY)
+    # rails: top and bottom flush with the wall's edges, the seam rails centred on the seams
+    rail_top = [oy, oy + PH - board / 2, oy + 2 * PH - board / 2, oy + H_ - board]
+    for y in rail_top:
+        s.rect(ox + rail_end, y, W_ - 2 * rail_end, board, fill=WOOD, stroke=WOOD_EDGE, sw=2)
+    for y, name in zip(rail_top, ("top rail", "seam rail", "seam rail", "bottom rail")):
+        s.text(ox + W_ + 16, y + 24, name, size=14, anchor="start")
+    # junction mounts, at their inserts
     rail_y = [oy + inset, oy + PH, oy + 2 * PH, oy + H_ - inset]
-    for y in rail_y:
-        s.rect(ox + rail_end, y - 10, W_ - 2 * rail_end, 20, fill="#aeb6bf", stroke="#3d4650", sw=2)
-    s.text(ox + W_ + 16, rail_y[0] + 6, "top rail", size=14, anchor="start")
-    s.text(ox + W_ + 16, rail_y[1] + 6, "seam rail", size=14, anchor="start")
-    s.text(ox + W_ + 16, rail_y[2] + 6, "seam rail", size=14, anchor="start")
-    s.text(ox + W_ + 16, rail_y[3] + 6, "bottom rail", size=14, anchor="start")
-    # junction mounts
     xs = [ox + inset, ox + PW, ox + 2 * PW, ox + 3 * PW, ox + W_ - inset]
     for ri, y in enumerate(rail_y):
         for xi, x in enumerate(xs):
-            seam = ri in (1, 2)
-            corner = ri in (0, 3) and xi in (0, 4)
-            if seam or corner:
+            if ri in (1, 2) or xi in (0, 4):
                 s.circle(x, y, 11, fill=ORANGE, stroke=BLACK)  # required (seam) or corner
             else:
                 s.circle(x, y, 11, fill="white", stroke=ORANGE)  # recommended
@@ -464,70 +483,73 @@ def frame():
             x = ox + PW / 2 + k * PW + 9
             s.circle(x, y, 8, fill="white", stroke=GREY)
             s.circle(x, y, 3, fill=GREY)
-    # bus bars on the seam rails: A serves the top row and panels 5-6 (rear right of row 2)
-    s.rect(ox + 2 * PW + 60, rail_y[1] - 34, 200, 14, fill="#f6c6c6", stroke=RED, sw=2, rx=3)
-    s.rect(ox + 2 * PW + 60, rail_y[1] + 20, 200, 14, fill="#d9d9d9", stroke=BLACK, sw=2, rx=3)
-    s.text(ox + 2 * PW + 160, rail_y[1] - 42, "bus A (panels 1-6)", size=14, weight="bold")
-    s.rect(ox + PW - 100, rail_y[2] - 34, 200, 14, fill="#f6c6c6", stroke=RED, sw=2, rx=3)
-    s.rect(ox + PW - 100, rail_y[2] + 20, 200, 14, fill="#d9d9d9", stroke=BLACK, sw=2, rx=3)
-    s.text(ox + PW, rail_y[2] + 52, "bus B (panels 7-12)", size=14, weight="bold")
     # controller corner
     s.rect(ox + 27, oy + PH / 2 - 21, 50, 42, fill=ORANGE, stroke=BLACK, sw=2, rx=4, opacity=0.9)
     s.text(ox + 52, oy + PH / 2 + 5, "ESP32", size=12, weight="bold")
-    # supplies on a 2020 crossbar across the stile extensions (no extra plate for the LRS-100)
+    # supply crossbar (1x3) across the stile extensions: supplies, DIN rail, fuses
     py = oy + H_ + 110
     cy = py + 150
-    s.rect(ox + 50, cy, W_ - 100, 20, fill="#aeb6bf", stroke="#3d4650", sw=2)
-    s.text(ox + W_ / 2, cy + 52, "supply crossbar (2020) across the stile extensions", size=16, weight="bold")
+    s.rect(ox + 30, cy, W_ - 60, 64, fill=WOOD, stroke=WOOD_EDGE, sw=2)
+    s.text(ox + W_ / 2, cy + 92, "supply crossbar (1x3) across the stile extensions: supplies on adapters, DIN rail", size=16, weight="bold")
     for i, name in enumerate(("Supply A", "Supply B")):
-        sx = ox + 330 + i * 420
-        s.rect(sx + 60, cy - 10, 86, 40, fill="#b8b8b8", stroke=BLACK, sw=1.5, rx=3)
+        sx = ox + 120 + i * 800
+        s.rect(sx + 60, cy + 12, 86, 40, fill="#b8b8b8", stroke=BLACK, sw=1.5, rx=3)
         s.rect(sx, py + 10, 206, 130, fill="#f8f8f8", stroke=BLACK, sw=2, rx=4)
         s.text(sx + 103, py + 70, name, size=16, weight="bold")
         s.text(sx + 103, py + 92, "base bolted to an adapter", size=13, fill=GREY)
-    s.rect(ox + 690 - 50, cy - 50, 100, 36, fill="#555", stroke=BLACK, sw=2, rx=4)
-    s.text(ox + 690, cy - 26, "AC inlet", size=13, fill="white")
+    # DIN rail with the two blocks, screwed to the crossbar between the supplies
+    s.rect(ox + 430, cy + 26, 400, 12, fill="#c0c0c0", stroke="#666", sw=1.5)
+    for k, (name, col) in enumerate((("+5 V block", RED), ("GND block", BLACK))):
+        bx = ox + 450 + k * 200
+        s.rect(bx, cy + 6, 80, 52, fill="#fde3c4", stroke=col, sw=2, rx=3)
+        s.rect(bx + 80, cy + 6, 80, 52, fill="#d3e4f8", stroke=col, sw=2, rx=3)
+        s.text(bx + 80, cy - 8, name, size=13, weight="bold", fill=col)
+    s.text(ox + 630, py + 70, "orange halves = supply A, blue = supply B", size=13, fill=GREY)
+    for fx in (ox + 360, ox + 860):
+        s.rect(fx, py + 100, 40, 18, fill=FUSE, stroke=BLACK, sw=2, rx=4)
+    s.text(ox + 630, py + 114, "20 A fuse on each +V feed, close to its supply", size=13, fill=GREY)
+    s.rect(ox + 1150, cy - 50, 100, 36, fill="#555", stroke=BLACK, sw=2, rx=4)
+    s.text(ox + 1200, cy - 26, "AC inlet", size=13, fill="white")
     s.line([(ox + 300, oy + H_ + 10), (ox + 300, py)], stroke=GREY, sw=1.5, dash="4,4")
     s.text(ox + 306, oy + H_ + 70, "100 mm or more", size=14, anchor="start", fill=GREY)
     # key
-    ky = py + 250
+    ky = py + 290
     s.circle(ox + 10, ky, 11, fill=ORANGE, stroke=BLACK)
     s.circle(ox + 10, ky, 4, fill=BLACK)
-    s.text(ox + 30, ky + 5, "junction mount, minimum 14 (10 seam + 4 corners): printed mount with M5 insert, 30 mm standoff, M5 screw through the drilled rail",
-           size=15, anchor="start")
-    s.circle(ox + 1000, ky + 62, 8, fill="white", stroke=GREY)
-    s.circle(ox + 1000, ky + 62, 3, fill=GREY)
-    s.text(ox + 1016, ky + 67, "optional (8): mid-edge posts", size=15, anchor="start")
+    s.text(ox + 30, ky + 5, "junction mount, minimum 14 (10 seam + 4 corners): printed mount with M5 insert, "
+           "M5 x 25 screw from the back through a 6 mm hole in the rail", size=15, anchor="start")
+    s.rect(ox, ky + 24, 40, 14, fill=WOOD, stroke=WOOD_EDGE, sw=2)
+    s.text(ox + 50, ky + 36, "rails: 4 x 1x2, 1270 mm     stiles (behind the rails): 3 x 1x2, 810 mm, "
+           "glued and screwed at each crossing     crossbar: 1x3, 1220 mm", size=15, anchor="start")
     s.circle(ox + 10, ky + 62, 11, fill="white", stroke=ORANGE)
     s.circle(ox + 10, ky + 62, 4, fill=BLACK)
     s.text(ox + 30, ky + 67, "recommended (6 more): keeps the top and bottom seams flush", size=15, anchor="start")
-    s.rect(ox, ky + 24, 40, 14, fill="#aeb6bf", stroke="#3d4650", sw=2)
-    s.text(ox + 50, ky + 36, "rails: 4 x 2020, about 1270 mm     stiles (behind the rails): 3 x 2020, about 830 mm, "
-           "joined with right-angle corner brackets (2 per crossing)", size=15, anchor="start")
+    s.circle(ox + 1000, ky + 62, 8, fill="white", stroke=GREY)
+    s.circle(ox + 1000, ky + 62, 3, fill=GREY)
+    s.text(ox + 1016, ky + 67, "optional (8): mid-edge posts", size=15, anchor="start")
     # side section
-    sx, sy = 1440, 120
-    s.text(sx + 120, sy - 30, "Side section through a seam", size=18, weight="bold")
-    layers = [("wall", 30, "#d8cbb8"), ("stile 20", 20, "#c9ced6"), ("rail 20", 20, "#aeb6bf"),
-              ("spacer 30", 30, None), ("adapter 5", 5, ORANGE), ("panel ~15", 15, "#333")]
+    sx, sy = 1460, 120
+    s.text(sx + 110, sy - 30, "Side section through a seam", size=18, weight="bold")
+    layers = [("wall", 30, "#d8cbb8"), ("stile", 19, WOOD), ("rail", 19, WOOD), ("mount", 9, ORANGE),
+              ("panel", 15, "#333")]
     x = sx
     for name, w, col in layers:
-        if col:
-            s.rect(x, sy, w, 520, fill=col, stroke=BLACK, sw=1.5)
-        else:
-            s.rect(x + w / 2 - 4, sy + 240, 8, 40, fill="#999", stroke=BLACK, sw=1)
+        top, h = (sy, 520) if name in ("wall", "stile", "panel") else (sy + 240, 38 if name == "rail" else 26)
+        if name == "mount":
+            top = sy + 246
+        s.rect(x, top, w, h, fill=col, stroke=BLACK, sw=1.5)
         x += w
-    s.line([(sx + 50 + 10, sy + 260), (sx + 135, sy + 260)], stroke=BLACK, sw=2)
-    s.text(sx + 138, sy + 600, "front", size=14, anchor="start")
-    s.line([(sx + 75, sy + 330), (sx + 100, sy + 330)], stroke=BLUE, sw=4)
-    s.text(sx + 30, sy + 560, "air gap and cable room", size=13, anchor="start", fill=TEAL)
-    s.text(sx + 30, sy + 578, "between panel and rail", size=13, anchor="start", fill=TEAL)
-    labels = ["wall", "stile (2020)", "rail (2020)", "30 mm spacer", "adapter", "panel"]
-    xs2 = [sx + 15, sx + 40, sx + 60, sx + 85, sx + 102, sx + 112]
+    s.line([(sx + 49, sy + 259), (sx + 77, sy + 259)], stroke=BLACK, sw=2)
+    s.text(sx + 110, sy + 600, "front", size=14, anchor="start")
+    s.text(sx + 10, sy + 560, "air gap behind the panels,", size=13, anchor="start", fill=TEAL)
+    s.text(sx + 10, sy + 578, "open at the top and bottom", size=13, anchor="start", fill=TEAL)
+    labels = ["wall", "stile (1x2, 19 mm)", "rail (1x2, 19 mm)", "mount (9 mm)", "panel", "M5 x 25 screw"]
+    xs2 = [sx + 15, sx + 40, sx + 59, sx + 72, sx + 85, sx + 63]
     for i, (t, lx) in enumerate(zip(labels, xs2)):
         ty = sy + 30 + i * 34
-        s.line([(lx, ty + 10), (sx + 200, ty)], stroke=GREY, sw=1)
-        s.text(sx + 206, ty + 5, t, size=13, anchor="start")
-    s.text(sx + 70, sy + 640, "about 95 mm wall to panel face", size=14)
+        s.line([(lx, ty + 10 if i < 5 else sy + 259), (sx + 130, ty)], stroke=GREY, sw=1)
+        s.text(sx + 136, ty + 5, t, size=13, anchor="start")
+    s.text(sx + 60, sy + 640, "about 62 mm wall to panel face", size=14)
     s.save("frame.svg")
 
 if __name__ == "__main__":

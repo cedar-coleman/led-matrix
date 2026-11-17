@@ -56,19 +56,29 @@ With the LRS-100-5s, all-white can't reach 100%. The firmware dims any frame tha
 | --- | --- | --- |
 | Mean Well LRS-100-5 | 2 | You have these |
 | IEC inlet with switch and fuse, plus a 3-prong cord | 1 or 2 | Or one switched power strip; one switch for the whole wall |
-| Bus bar pair (+ and GND), 6 screw positions, insulated mounts | 2 | One pair per supply; the panels' fork terminals screw on here |
-| 14 AWG stranded wire, red and black | about 3 m each | Supply to its bus bars (12 AWG if the run is over 1 m) |
-| Inline blade fuse holder, 14 AWG, with 20 A fuse | 2 | On each supply's +V feed |
-| 14 AWG jumper wire | 30 cm | Joins the two GND bus bars |
-| 2 A inline fuse, 20 AWG red/black, two M3 ring terminals | 1 set | Controller power lead |
-| Ring or fork terminals for the supply screws, plus ferrules | 1 pack | No bare stranded wire under a screw |
+| DIN-rail distribution block, lever terminals, 2 in / 12 out as **two isolated 1-in / 6-out halves** (JANDECCN KV4212, 32 A, 28-12 AWG) | 2 | One for +5 V, one for GND. Orange half = supply A, blue half = supply B |
+| 35 mm DIN rail, about 15 cm | 1 | Screwed to the supply crossbar between the supplies |
+| 14 AWG stranded wire, red and black | about 1 m each | Supply to its half of each block |
+| Inline blade fuse holder, 14 AWG, with 20 A fuse | 2 | On each supply's +V feed, close to the supply |
+| 14 AWG black wire | 30 cm | Joins the two supplies' grounds (second −V screw to second −V screw) |
+| 16 or 18 AWG red and black wire | about 6 m each | Extends the panels' own leads where they don't reach the blocks |
+| 2 A inline fuse, 20 AWG red/black, M3 ring terminals | 1 set | Controller power lead |
+| Ring or fork terminals for the supply screws | 1 pack | No bare stranded wire under a screw. The lever blocks take bare stranded wire |
 | Terminal covers (bought or printed) | 2 | Over the AC terminals |
 | Multimeter | 1 | DC volts |
 | **DC-capable** clamp meter | 1 | Many clamp meters measure AC only. Check it says "DC A" |
 
-The panels' own power leads (4-pin plug on one end, red and black fork terminals on the
-other) connect each panel to its bus bars. If yours are splitters with two plugs on one
-lead, one lead powers two neighbouring panels: pair them 1+2, 3+4, 5+6, 7+8, 9+10, 11+12.
+The panels' own power leads (4-pin plug on one end, red and black wires on the other)
+connect each panel to the blocks. Cut the fork terminals off and strip the ends for the lever
+terminals. If yours are splitters with two plugs on one lead, one lead powers two
+neighbouring panels: pair them 1+2, 3+4, 5+6, 7+8, 9+10, 11+12.
+
+**Why the two blocks don't join the supplies.** Each KV4212 is two separate circuits in one
+housing: the orange input feeds only the orange outputs, the blue input only the blue ones.
+So one block carries both supplies' +5 V without connecting them. Check it before wiring:
+with the meter on continuity, an orange output to a blue output on the + block must **not**
+beep. If it beeps, don't use that block for +5 V; the two supplies must never be connected
+on the + side.
 
 ### LRS-100-5 terminals
 
@@ -83,22 +93,30 @@ full output from 115 V up, so it runs from a US outlet as it comes.
 
 ### Steps
 
-1. Mount both supplies as in [`assembly-guide.md`](assembly-guide.md) section 6: bolted by
-   their bases to the frame's crossbar (no extra plate needed for the LRS-100), with air around
-   them, below the wall, never squeezed behind the panels.
+1. Mount both supplies as in [`assembly-guide.md`](assembly-guide.md) section 6: on their
+   adapters on the frame's crossbar, with air around them, below the wall, never squeezed
+   behind the panels. Clip the two blocks onto the DIN rail between them and label them
+   "+5 V" and "GND", and each half "A (panels 1-6)" and "B (panels 7-12)".
 2. AC side, cord unplugged: black (hot) to L, white (neutral) to N, green to ⏚. Fit the
    terminal cover.
-3. Each supply: +V (terminal 6 or 7) through the 20 A fuse to its + bus bar; −V (terminal 4
-   or 5) to its GND bus bar. 14 AWG; 12 AWG if the run is longer than 1 m.
-4. Each panel: plug its lead into the panel's 5 V socket, then screw the red fork to its
-   supply's + bar and the black fork to the GND bar, in the slot with the panel's number.
-5. Join the two GND bus bars with the 14 AWG jumper. The data ribbon between panels 6 and 7
-   crosses from one supply to the other, so the grounds must be common.
-   **Never connect supply A's + bar to supply B's.**
+3. Each supply's feeds, 14 AWG: +V (terminal 6) through the 20 A fuse to its half's input on
+   the +5 V block; −V (terminal 4) to its half's input on the GND block. Supply A feeds the
+   orange halves, supply B the blue halves. Put the fuse close to the supply.
+4. Each panel: plug its lead into the panel's 5 V socket, then push the red wire into a +5 V
+   output and the black wire into a GND output, both on its supply's half (panels 1-6
+   orange, 7-12 blue). Strip to the length marked on the block, twist the strands, push in
+   fully, close the lever and tug the wire. Where a lead doesn't reach, extend it in 16 or
+   18 AWG with a lever splice.
+5. Join the grounds: a 14 AWG black wire from supply A's second −V screw (terminal 5) to
+   supply B's (terminal 5). The data ribbon between panels 6 and 7 crosses from one supply
+   to the other, so the grounds must be common. **Never connect supply A's +V to supply
+   B's**, at the supplies or on the blocks.
 6. Controller power (see [`assembly-guide.md`](assembly-guide.md) section 4): during testing,
    power the board from the laptop through its USB-C data port and leave the supply lead off.
-   For the permanent install, run the 2 A-fused red/black lead from bus A to the board's two
-   M3 "screen power" terminals (5 V and GND). Don't connect both at once.
+   For the permanent install, run the 2 A-fused red/black lead from supply A's second
+   terminals (+V terminal 7, −V terminal 5, with the ground join) to the board's two M3
+   "screen power" terminals (5 V and GND). Don't connect both at once. With splitter leads,
+   the blocks have spare outputs, and the lead can come from the orange halves instead.
 7. HUB75 data: the board plugs straight onto panel 1's IN header; then OUT to IN along the
    chain, as in the drawing.
 
@@ -187,7 +205,7 @@ at 10%.
 
 ### Test 2: one panel
 
-Connect only panel 1 (power from bus A, slot 1; the board plugged onto its IN header). Flash the test pattern
+Connect only panel 1 (power from the orange halves of the blocks; the board plugged onto its IN header). Flash the test pattern
 build. Panel 1 shows "1", a border and an up arrow. If it's blank or noisy, rebuild with
 `-DWALL_DRIVER_FM6126A` added. If the board reboots in a loop, see `README.md` (flash mode).
 
@@ -201,8 +219,8 @@ rate printed in the serial log at boot.
 ### Test 4: current measurements
 
 Flash the calibration build (capped at 50% on the LRS-100-5s). Clamp the DC clamp meter
-around **that supply's +V feed** (the fused red wire from the supply to its + bus bar). Use
-the +V side: the GND bars are joined between the supplies, so return current can split
+around **that supply's +V feed** (the fused red wire from the supply to the +5 V block). Use
+the +V side: the grounds are joined between the supplies, so return current can split
 between them and the reading would be off. With the UHP-500-5, clamp both 8 AWG +V leads
 together (both inside the jaw). Zero the
 clamp meter (DC zero button) before each reading.
@@ -210,7 +228,7 @@ clamp meter (DC zero button) before each reading.
 For each line in the table, set the pattern and brightness, wait 10 seconds, and read:
 
 - the current for each supply
-- the voltage at the **farthest panel** on each bus (meter probes on that panel's 5 V
+- the voltage at the **farthest panel** on each supply (meter probes on that panel's 5 V
   socket, + and −)
 
 Watch for flicker or the wall blinking off and on: that's the supply's overload protection

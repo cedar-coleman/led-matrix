@@ -1,7 +1,7 @@
 # Printed parts
 
-Junction mounts that hold the panels to the 2020 frame. Where they go, and the screws and
-standoffs they take, is in [the assembly guide](../docs/assembly-guide.md), section 6.
+Junction mounts that hold the panels to the wooden frame. Where they go, and the screws they
+take, is in [the assembly guide](../docs/assembly-guide.md), section 6.
 
 ![Junction mounts](../docs/diagrams/junction-mounts.png)
 
@@ -39,5 +39,6 @@ python3 -m venv .tools/cad-venv
 The script checks each part is a clean solid with one through hole per post and at least
 2 mm of material between holes, then rewrites `stl/` and the drawing above. The other
 settings (plate thickness, counterbore, insert hole, the insert's 9 mm offset) are at the top
-of the same file. If you change `OFFSET`, the rails move too: the top and bottom rails are
-centred `POST_INSET + OFFSET` in from the wall's edges.
+of the same file. The edge inserts sit `POST_INSET + OFFSET` (15 mm) in from the wall's top
+and bottom edges, on the 38 mm rails flush with those edges: keep that figure under about
+30 mm if you change either.
