@@ -125,62 +125,75 @@ bars where the panels' forks screw on. After switching, set Settings → Power s
 
 ![2020 frame](diagrams/frame.svg)
 
-Two 2020 rails sit directly behind the panels' row seams, two short stiles tie them together,
-and printed blocks hold the whole frame 30 mm off the wall. The supplies and the power blocks
-ride on the back of the lower rail, in that gap, so nothing shows below or beside the screen.
+A flat ladder of 2020, all in one plane directly behind the panels: two end stiles, two seam
+rails between them, and two short struts between the rails. Printed blocks hold it 45 mm off
+the wall, and the supplies and the power blocks ride on the back of the lower rail in that
+gap, so nothing shows below or beside the screen. It takes four 48 in lengths.
 
 **Why it is built this way.** Each mount carries its share of the panels' weight at the
-distance from the rail face to the panels' centre of mass: about 16 mm with the rail
+distance from the frame's face to the panels' centre of mass: about 16 mm with the frame
 directly behind the panels, against about 46 mm if the mounts stood on 30 mm spacers. The
-depth the supplies need goes between the frame and the wall instead, where the load is mostly
-compression: the bottom blocks push on the wall, and the two top screws resist a pull of only
-about 20 N (10 kg about 80 mm out from the wall, with about 420 mm between the top and bottom
-blocks).
+depth the supplies need goes between the frame and the wall instead, where the load is
+mostly compression: the bottom blocks push on the wall, and the two top screws resist a pull
+of only about 20 N (10 kg roughly 80 mm out from the wall, with about 420 mm between the top
+and bottom blocks). Butting every joint in one plane is the joint 2020 corner brackets are
+made for.
 
-- **Two seam rails**, 2020, 48 in (1219 mm), uncut, centred on the two row seams. They stop
-  about 30 mm short of the wall's sides, so they don't show from the front.
-- **Two stiles**, 2020, 480 mm (the wall's height), cut from one 48 in length, **behind the
-  rails** (wall side) with their left edges 100 and 1142 mm from the wall's left edge, seen
-  from behind. There they miss every mount screw, the controller board and the panels' ribbon
-  headers. Join each crossing with two right-angle 2020 corner brackets (8 in all), one above
-  the rail and one below, bridging the stile's front face and the rail's top or bottom face.
+- **End stiles:** 2020, 470 mm, at each end, 10 to 30 mm in from the wall's sides and 5 mm
+  in from the top and bottom, so they don't show. The frame is 1260 mm wide.
+- **Seam rails:** 2020, 48 in (1220 mm), uncut, centred on the two row seams, butted between
+  the end stiles.
+- **Struts:** 2020, 140 mm, between the seam rails, with their left edges 415 and 845 mm from
+  the wall's left edge (seen from behind). They tie the rails at a fixed spacing. **Not on
+  the vertical seams:** each row's HUB75 ribbons cross the seams at mid-height, and the frame
+  is only 9 mm behind the panel backs. These two spots are clear of every ribbon, header and
+  power socket.
+- **Corner brackets:** two at each joint, in the inside corners, bolted into the side slots
+  of the two pieces they join: 8 for the rail-stile joints, 4 for the struts.
 - **Junction mounts** (printed parts in [`hardware/`](../hardware/README.md)). Each panel has
   six M3 posts on its back: one about 6 mm in from each corner and one at the middle of each
   long edge. A mount screws onto the posts of the panels that meet there (M3 x 10 into
-  counterbores, no washers) and carries an M5 heat-set insert for the rail screw:
+  counterbores, no washers) and carries an M5 heat-set insert for the frame screw:
 
   ![Junction mounts](diagrams/junction-mounts.png)
 
-  | Mount | Where | Fixed to a rail | Number |
+  | Mount | Where | Fixed to | Number |
   | --- | --- | --- | --- |
-  | quad | where four panel corners meet | yes | 6 |
-  | side_pair | two corners across a row seam at the wall's left or right edge; insert 40 mm in, so it lands on the 1219 mm rail | yes | 4 |
-  | pair | two corners across a seam on the top and bottom edges | no: joins the panels only | 6 |
-  | corner | the wall's four outer corners | no | 4 |
-  | pair (optional) | the mid-edge posts across each row seam, halfway along each panel | yes | 8 |
+  | quad | where four panel corners meet | a seam rail | 6 |
+  | pair | two corners across a row seam at the wall's left or right edge | an end stile | 4 |
+  | corner | the wall's four outer corners | an end stile | 4 |
+  | pair | two corners across a seam on the top and bottom edges | nothing: joins the panels only | 6 |
+  | pair (optional) | the mid-edge posts across each row seam, halfway along each panel | a seam rail | 8 |
 
-  Every panel hangs from two corners on a rail. The top and bottom edge mounts keep those
-  seams flush but don't fix to the frame, so the outer edges flex a little if pushed. If that
-  bothers you, add top and bottom rails later: the spare 48 in length is half of the pair, and
-  the edge mounts' inserts already sit where those rails would go. Print every mount in
-  **PETG or ASA**, not PLA: they carry the wall's weight and the panel backs get warm.
-- **Fixing the mounts.** Lay the panels face down with all the mounts on, lay the rails on
-  them, and mark each fixed mount's insert on the rail. Drill a **6 mm hole straight through
-  the rail** at each mark (through the centre bore; the slightly oversized hole takes up
-  about 0.5 mm of error), lay the rails back and drive an **M5 x 25 socket head screw with a
-  washer** from the rail's back into each insert: 20 mm of rail, about 5 mm into the insert.
-  Fit everything loosely, push the panels flush, then tighten.
-- **Gaps.** The mount's 9 mm is the gap between the panel backs and the rails: enough for
-  the two row-to-row ribbons and the power leads to pass under a rail. The panels' headers
-  and power sockets sit in the middle of each panel, where the gap to the stiles is 29 mm
-  and to the wall about 79 mm. Check one panel with its leads plugged in before you commit.
-- **Wall blocks** (printed, PETG or ASA, 30 mm thick, each fixed into the stile's rear slot
-  with M5 x 30 screws and M5 T-nuts from the wall face):
-  - a **hanger** at the top of each stile, with a keyhole on its wall face: the frame hangs
-    on two pan-head screws (#8 or #10, head 9.5 mm or less) in the wall, left standing out
-    about 3 mm. Set them 1042 mm apart (the stiles' centres) and level; the frame drops
+  That fixes 14 mounts (22 with the optional ones), and every panel to the frame at two or
+  more corners. The top and bottom edge pairs keep those seams flush; if the long top and
+  bottom edges flex more than you like, a fifth length gives top and bottom rails between
+  the stiles, and those six pairs land on them. Print every mount in **PETG or ASA**, not
+  PLA: they carry the wall's weight and the panel backs get warm.
+- **Fixing the mounts.** Lay the panels face down with all the mounts on, lay the frame on
+  them, and mark each fixed mount's insert on the frame. Drill a **6 mm hole straight
+  through** the rail or stile at each mark (through the centre bore; the slightly oversized
+  hole takes up about 0.5 mm of error), lay the frame back and drive an **M5 x 25 socket
+  head screw with a washer** from the frame's back into each insert: 20 mm of extrusion,
+  about 5 mm into the insert. Fit everything loosely, push the panels flush, then tighten.
+- **Gaps.** The mount's 9 mm is the gap between the panel backs and the frame: enough for
+  the two row-to-row ribbons and the power leads to pass over it. Away from the frame there
+  is about 74 mm between the panel backs and the wall. Check one panel with its leads plugged in before you
+  commit.
+- **The controller board.** It plugs onto panel 1's IN header, about 47 mm in from the
+  panel's outer edge (scaled from the supplier's photo), right beside the left end stile
+  (seen from behind). Plug it in and measure from the panel's outer edge to the board's
+  nearest edge: **32 mm or more** and it clears the stile. If it's less, mount the board on
+  the frame instead, joined to panel 1's IN by a short HUB75 ribbon through a 2 x 8 male-male
+  pin header (the ribbon and the board's socket are both female).
+- **Wall blocks** (printed, PETG or ASA, 45 mm thick, each fixed into an end stile's rear
+  slot with M5 x 30 screws and M5 T-nuts from the wall face; the counterbores are deep so
+  the 30 mm screw reaches):
+  - a **hanger** at the top of each end stile, with a keyhole on its wall face: the frame
+    hangs on two pan-head screws (#8 or #10, head 9.5 mm or less) in the wall, left standing
+    out about 3 mm. Set them 1240 mm apart (the stiles' centres) and level; the frame drops
     18 mm onto them. Into studs where you can, or anchors rated well above 10 kg;
-  - a **bumper** at the bottom of each stile, resting on the wall.
+  - a **bumper** at the bottom of each end stile, resting on the wall.
 
   ![Wall blocks](diagrams/wall-blocks.png)
 - **Power on the lower rail's back**, between the mount screws, as in
@@ -191,20 +204,21 @@ blocks).
 
 | Cut list (4 x 48 in 2020) | Quantity | Length |
 | --- | --- | --- |
-| Seam rail | 2 | 1219 mm (uncut) |
-| Stile | 2 | 480 mm (both from one length) |
-| Spare | 1 | 1219 mm: a future top or bottom rail |
+| Seam rail | 2 | 1220 mm (uncut) |
+| End stile | 2 | 470 mm (both from one length) |
+| Strut | 2 | 140 mm (from the fourth length; with careful cuts, from the third length's offcut instead, with 465 mm stiles) |
 
 | Hardware | Quantity |
 | --- | --- |
-| Junction mounts (`hardware/stl`), PETG or ASA, an M5 heat-set insert each | 20: 6 quad, 4 side_pair, 6 pair, 4 corner (plus 8 pair for the optional mid-edge mounts) |
+| Junction mounts (`hardware/stl`), PETG or ASA | 20: 6 quad, 10 pair, 4 corner (plus 8 pair for the optional mid-edge mounts) |
+| M5 heat-set inserts, one per fixed mount | 14 (22) |
 | Wall blocks (`hardware/stl`), PETG or ASA | 2 hangers, 2 bumpers |
 | M3 x 10 socket head screws into the panels' posts (no washers: the mounts are counterbored) | 48 (64) |
-| M5 x 25 socket head screws and washers (rail into each fixed mount's insert) | 10 (18) |
-| M5 x 30 socket head screws and M5 drop-in T-nuts (wall blocks into the stiles) | 6 |
+| M5 x 25 socket head screws and washers (frame into each fixed mount's insert) | 14 (22) |
+| M5 x 30 socket head screws and M5 drop-in T-nuts (wall blocks into the end stiles) | 6 |
 | M5 drop-in T-nuts and short M5 screws (supply adapters to the rail) | 4 |
 | M3 drop-in T-nuts for 2020 and M3 x 8 screws (power blocks to the rail) | 4 |
-| Right-angle 2020 corner brackets with their T-nuts and screws | 8 |
+| Right-angle 2020 corner brackets with their T-nuts and screws | 12 |
 | Pan-head wall screws (#8 or #10) with anchors rated well above 10 kg | 2 |
 
 **Test-fit one first.** The 6 mm post position is scaled from the supplier's photo of the
@@ -213,7 +227,7 @@ laid face down: if the screws start without forcing, print the rest. If not, mea
 centre to panel edge, set `POST_INSET` in `hardware/mounts.py` and run it again (see
 [`hardware/README.md`](../hardware/README.md)). While the panels are face down, check that
 nothing on the back within 20 mm of a seam stands taller than 9 mm; if something does, the
-rail would press on it, so raise `PLATE_T` to clear it.
+frame would press on it, so raise `PLATE_T` to clear it.
 
 ### The supplies (LRS-100-5)
 
@@ -235,7 +249,7 @@ cooling. (The UHP-500-5 is different: it does need its plate, see below.)
 Recommended mount, as in the drawings:
 
 1. **On the back of the lower seam rail**, between the mount screws (supply A 180 to 309 mm,
-   supply B 980 to 1109 mm from the wall's left edge, seen from behind), in the 50 mm between
+   supply B 980 to 1109 mm from the wall's left edge, seen from behind), in the 45 mm between
    the rail and the wall.
 2. **Bolt each supply's base to a small adapter** (a short piece of aluminium flat bar, or a
    printed PETG/ASA bracket), then the adapter to the rail's rear slot with M5 T-nuts. Mean
@@ -245,11 +259,11 @@ Recommended mount, as in the drawings:
 3. The two power blocks go on the same rail between the supplies (656 to 784 mm), with M3
    screws through their 4 mm holes into M3 T-nuts. The fuse holders hang on their wires
    close to the supplies; tie them to the rail.
-4. **AC:** a switched IEC inlet on a stile near the bottom edge, where you can reach it under
+4. **AC:** a switched IEC inlet on an end stile near the bottom edge, where you can reach it under
    the panels, or one cord with an inline switch. Cover the supplies' AC terminals (bought
    covers, or printed ones in PETG/ASA) and clamp the cord to a stile.
 5. **Keep the gap open** at the top, bottom and sides: air rises from below the wall, behind
-   the frame and past the supplies. Each supply has about 17 mm between it and the wall; put
+   the frame and past the supplies. Each supply has about 12 mm between it and the wall; put
    nothing on its mesh.
 6. **Heat is the deciding check.** The supplies sit behind the panels, in air the panels warm.
    At their 85% maximum load they should stay well within Mean Well's rating (full output up
@@ -315,12 +329,12 @@ size and contents before ordering. Links reused from DJDevon3's build are marked
 
 | Part | For | Qty | Link | Check |
 | --- | --- | --- | --- | --- |
-| 2020 extrusion, 48 in (1219 mm), with right-angle corner brackets | 2 seam rails, 2 stiles (480 mm, from one length), 1 spare | 4 lengths, 8 brackets | your 4 x 48 in set | Cut the stiles square with a metal-cutting blade |
-| M5 drop-in T-nuts for 2020, and M5 x 30 and short M5 screws | Wall blocks into the stiles (6), supply adapters onto the rail (4) | 1 pack | any 2020 supplier | |
+| 2020 extrusion, 48 in (1220 mm), with right-angle corner brackets | 2 seam rails, 2 end stiles (470 mm), 2 struts (140 mm) | 4 lengths, 12 brackets | your 4 x 48 in set | Cut square with a metal-cutting blade; the struts' length sets the rails' spacing |
+| M5 drop-in T-nuts for 2020, and M5 x 30 and short M5 screws | Wall blocks into the end stiles (6), supply adapters onto the rail (4) | 1 pack | any 2020 supplier | |
 | M3 drop-in T-nuts for 2020, and M3 x 8 screws | Power blocks onto the rail | 4 | any 2020 supplier | The blocks' 4 mm holes take M3 |
 | Pan-head wall screws (#8 or #10, head 9.5 mm or less) and anchors rated well above 10 kg | The two keyhole hangers | 2 | any hardware store | Into studs where you can |
-| M5 heat-set inserts | One per mount fixed to a rail | 10, or 18 with the optional pairs (plus spares; the edge mounts take one too if you add top and bottom rails later) | [initeq M5, 20 pcs](https://www.amazon.com/dp/B077CJ26FL) | The mounts print a 6.4 mm hole; if the insert maker gives another size, set `INSERT_D` in `hardware/mounts.py` |
-| M5 x 25 socket head screws, with washers | Through the drilled rail into each fixed mount's insert | 10 (18) | any hardware store | 20 mm rail plus about 5 mm into the insert |
+| M5 heat-set inserts | One per mount fixed to the frame | 14, or 22 with the optional pairs (plus spares; the edge mounts take one too if you add top and bottom rails later) | [initeq M5, 20 pcs](https://www.amazon.com/dp/B077CJ26FL) | The mounts print a 6.4 mm hole; if the insert maker gives another size, set `INSERT_D` in `hardware/mounts.py` |
+| M5 x 25 socket head screws, with washers | Through the drilled frame into each fixed mount's insert | 14 (22) | any hardware store | 20 mm of extrusion plus about 5 mm into the insert |
 | M3 x 10 socket head screws | Mounts into the panels' posts | 48 (64) | [100 pcs with washers](https://www.amazon.com/dp/B091N1J6F8) | The washers aren't needed |
 | M3 x 6 screws (adapter 3 mm thick + at most 3 mm into the case) | Supplies onto their adapters | 4 | from any M3 assortment | Match the length to your adapter: never more than 3 mm into the supply |
 | Aluminium flat bar, about 25 x 3 mm, or printed PETG/ASA | Supply adapters | 2 short pieces | any hardware store | |

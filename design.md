@@ -107,8 +107,9 @@ The LED wall (1.28 m wide) is smaller than the chalkboard it replaces, so the ta
 - Fused distribution (20 A per feed), 14 AWG wire, ring terminals, a grounded enclosure for
   the two LRS-100-5 supplies (see Power above)
 - HUB75 ribbons: panels usually ship with short ones; rows need 2 to 3 slightly longer ones
-- Mounting: two 2020 seam rails directly behind the panels and two short stiles, held 30 mm
-  off the wall by printed blocks; the supplies and power blocks ride on the lower rail's back
+- Mounting: a flat 2020 ladder directly behind the panels (two end stiles, two seam rails,
+  two struts), held 45 mm off the wall by printed blocks; the supplies and power blocks ride
+  on the lower rail's back
   (`docs/assembly-guide.md` section 6, `hardware/`)
 - Optional: smoked acrylic or diffuser film (softens pixels, raises perceived contrast)
 - CR1220/SH1.0 RTC battery (keeps time across power cuts)

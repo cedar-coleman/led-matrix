@@ -1,19 +1,18 @@
 """Printed parts for the frame (docs/assembly-guide.md, section 6).
 
 Junction mounts screw onto the panels' M3 posts from the back. Each carries an M5 heat-set
-insert, which takes the M5 x 25 screw driven through a seam rail from behind:
+insert, which takes the M5 x 25 screw driven through the frame from behind:
 
-  quad       where four panel corners meet: four posts on a square, insert in the middle
-  side_pair  two corners across a row seam at the wall's left or right edge; the insert sits
-             SIDE_OFFSET in, so it lands on a 48 in (1219 mm) rail, which stops about 30 mm
-             short of the wall's sides
-  pair       two posts across a seam elsewhere: the top and bottom edges (these only join the
-             panels; no rail behind them) and the optional mid-edge posts along the row seams;
-             the insert sits OFFSET to one side, clear of the screw heads
-  corner     one post at each of the wall's four outer corners; joins nothing to the frame
-             but keeps the corner's two posts square, and is ready for a top or bottom rail
+  quad    where four panel corners meet: four posts on a square, insert in the middle (on a
+          seam rail)
+  pair    two posts across a seam; the insert sits OFFSET to one side, clear of the screw
+          heads. At the wall's left and right edges it lands on an end stile; on the row
+          seams' mid-edge posts (optional) on a seam rail; on the top and bottom edges it
+          only joins the panels (no rail there unless you add one)
+  corner  one post at each of the wall's four outer corners; insert OFFSET in on both axes,
+          on an end stile
 
-Wall blocks hold the frame 30 mm off the wall, screwed into the stiles' rear slots:
+Wall blocks hold the frame BLOCK_T off the wall, screwed into the end stiles' rear slots:
 
   hanger     top of each stile: a keyhole on the wall face hangs on a screw in the wall
   bumper     bottom of each stile: rests against the wall
@@ -46,7 +45,6 @@ HEAD_DEPTH = 3.5      # leaves 5.5 mm under the head: an M3 x 10 goes 4.5 mm int
 INSERT_D = 6.4        # M5 heat-set insert hole: use the insert maker's figure
 INSERT_DEPTH = 7.5    # blind, from the back face; leaves a 1.5 mm floor
 OFFSET = 9.0          # pair and corner: insert centre from the posts' line
-SIDE_OFFSET = 40.0    # side pair: lands 46 mm in from the wall's side, on a 1219 mm rail
 MARGIN = 7.0          # plate edge beyond a hole centre, except on a wall edge
 CORNER_R = 2.0        # plate corner radius
 SEGMENTS = 64
@@ -88,17 +86,13 @@ def quad():
     return part((-e, -e, e, e), posts, (0, 0)), posts, (0, 0)
 
 
-def pair(offset=OFFSET):
+def pair():
     # Posts along x; the wall's outer edge (or the seam's far side) is at -y.
     h = PITCH / 2
     e = h + MARGIN
     posts = [(-h, 0), (h, 0)]
-    insert = (0, offset)
-    return part((-e, -POST_INSET, e, offset + INSERT_D / 2 + 3.8), posts, insert), posts, insert
-
-
-def side_pair():
-    return pair(SIDE_OFFSET)
+    insert = (0, OFFSET)
+    return part((-e, -POST_INSET, e, OFFSET + INSERT_D / 2 + 3.8), posts, insert), posts, insert
 
 
 def corner():
@@ -110,11 +104,11 @@ def corner():
 
 # Wall blocks (mm). x across the stile, y up the wall, z from the wall face (z = 0, printed
 # face down) to the stile's back (z = BLOCK_T).
-BLOCK_T = 30.0        # the gap between the wall and the stiles
+BLOCK_T = 45.0        # the gap between the wall and the frame: a supply (30 mm) on its adapter, plus air
 BLOCK_W = 20.0        # a 2020 stile's width
 M5_HOLE = 5.5
 M5_HEAD_D = 9.5       # counterbore for an M5 socket head, on the wall face
-M5_HEAD_DEPTH = 6.0   # leaves 24 mm under the head: an M5 x 30 goes about 6 mm into a T-nut
+M5_HEAD_DEPTH = BLOCK_T - 24.0  # deep counterbore: 24 mm under the head, so an M5 x 30 goes about 6 mm into a T-nut
 KEY_ENTRY_D = 10.0    # takes a #8 or #10 pan head (9.5 mm or less)
 KEY_SLOT_W = 5.5      # takes the screw's shank
 KEY_DROP = 18.0       # how far the block drops onto the screw
@@ -153,7 +147,7 @@ def hanger():
 
 
 def bumper():
-    """Bottom of a stile: holds it 30 mm off the wall."""
+    """Bottom of an end stile: holds it BLOCK_T off the wall."""
     return block(BUMPER_H, BUMPER_HOLES), 1
 
 
@@ -188,12 +182,12 @@ def preview(parts, path):
     from matplotlib.patches import Circle
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-    fig = plt.figure(figsize=(15, 7.5))
+    fig = plt.figure(figsize=(4 * len(parts), 7.5))
     for col, (name, (m, posts, insert)) in enumerate(parts.items()):
         mesh = m.to_mesh()
         v = np.asarray(mesh.vert_properties)[:, :3]
         tri = v[np.asarray(mesh.tri_verts)]
-        ax = fig.add_subplot(2, 4, col + 1, projection="3d")
+        ax = fig.add_subplot(2, len(parts), col + 1, projection="3d")
         ax.add_collection3d(Poly3DCollection(tri, facecolor="#6fb3b8", edgecolor="#2d5f63", linewidths=0.05))
         lo, hi = v.min(0), v.max(0)
         c, s = (lo + hi) / 2, (hi - lo).max() / 2
@@ -202,7 +196,7 @@ def preview(parts, path):
         ax.set_axis_off()
         ax.set_title(f"{name}: back face up", fontsize=11)
 
-        ax = fig.add_subplot(2, 4, col + 5)
+        ax = fig.add_subplot(2, len(parts), col + 1 + len(parts))
         x0, y0, x1, y1 = lo[0], lo[1], hi[0], hi[1]
         ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, lw=1.5))
         for x, y in posts:
@@ -258,7 +252,7 @@ def preview_blocks(path):
 
 
 def main():
-    parts = {"quad": quad(), "side_pair": side_pair(), "pair": pair(), "corner": corner()}
+    parts = {"quad": quad(), "pair": pair(), "corner": corner()}
     for name, (m, posts, insert) in parts.items():
         assert m.status().name == "NoError", (name, m.status())
         # One through hole per post; the insert hole is blind and adds none.

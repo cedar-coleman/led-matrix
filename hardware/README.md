@@ -1,7 +1,7 @@
 # Printed parts
 
 Junction mounts that hold the panels to the 2020 frame, and the blocks that hold the frame
-30 mm off the wall. Where they go, and the screws they take, is in
+45 mm off the wall. Where they go, and the screws they take, is in
 [the assembly guide](../docs/assembly-guide.md), section 6.
 
 ![Junction mounts](../docs/diagrams/junction-mounts.png)
@@ -9,11 +9,10 @@ Junction mounts that hold the panels to the 2020 frame, and the blocks that hold
 | File | Part | Print |
 | --- | --- | --- |
 | `stl/quad.stl` | Four panel corners | 6 |
-| `stl/side_pair.stl` | Two corners across a row seam at the wall's left or right edge; insert 40 mm in, to land on the 48 in rail | 4 |
-| `stl/pair.stl` | Two posts across a seam on the top and bottom edges, and the optional mid-edge posts on the row seams | 6, or 14 with the optional ones |
+| `stl/pair.stl` | Two posts across a seam: the wall's left and right edges (onto the end stiles), the top and bottom edges, and the optional mid-edge posts on the row seams | 10, or 18 with the optional ones |
 | `stl/corner.stl` | One post at each outer corner of the wall | 4 |
-| `stl/hanger.stl` | Top of each stile: keyhole that hangs on a screw in the wall | 2 |
-| `stl/bumper.stl` | Bottom of each stile: rests on the wall | 2 |
+| `stl/hanger.stl` | Top of each end stile: keyhole that hangs on a screw in the wall | 2 |
+| `stl/bumper.stl` | Bottom of each end stile: rests on the wall | 2 |
 
 ![Wall blocks](../docs/diagrams/wall-blocks.png)
 
