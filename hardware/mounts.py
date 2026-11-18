@@ -24,9 +24,9 @@ apart across the row seams. A lip sits in the BACK_INSET step under the LED boar
 overhang: it doesn't widen the wall or show. A lip only ever goes on the outside of the
 wall: between two panels there's no room for one.
 
-Every panel has a recessed magnet boss (a cup, WELL_D across) in line with each M3 post,
-BOSS_ALONG from it along the long edge: towards the panel's middle at the corners, and to
-one side at the mid-edge posts. Each mount has a short chamfered peg (PEG_D, PEG_H) under it
+Every panel has a recessed magnet boss (a cup, WELL_D across) beside each M3 post, along
+the long edge: BOSS_ALONG towards the panel's middle at the corners, MID_ALONG to one side
+at the mid-edge posts. Each mount has a short chamfered peg (PEG_D, PEG_H) under it
 that drops into the cup, so the mount locates on the panel and can't twist. Across a row
 seam the two mid-edge cups are on opposite sides; with the middle row upside down it comes
 out the same at both seams: seen from behind, the upper panel's cup is right of its post and
@@ -71,10 +71,15 @@ MARGIN = 7.0          # plate edge beyond a hole centre, except on a wall edge
 FAR = OFFSET + INSERT_D / 2 + 3.8   # plate edge beyond the posts' line, on the insert's side
 
 # The panels' magnet bosses and the edge lips (mm)
-BOSS_ALONG = 10.6     # magnet boss centre from its M3 post, along the panel's long edge
+# Cup centre from its M3 post, measured on a flat photo of the whole back (scaled by the two
+# corner posts, 303.75 mm apart): along the long edge, and in from the post line.
+BOSS_ALONG = 11.9     # corner posts (11.85 and 12.0 measured)
+BOSS_IN = 0.3
+MID_ALONG = 10.4      # mid-edge posts (10.35 and 10.40 measured)
+MID_IN = 1.0          # (0.8 and 1.5 measured)
 WELL_D = 12.0         # inside diameter of the boss's cup (measured)
 WELL_DEPTH = 2.0      # the cup's depth (measured)
-PEG_D = WELL_D - 0.8  # 0.4 mm clearance all round, for small errors in BOSS_ALONG
+PEG_D = WELL_D - 1.0  # 0.5 mm clearance all round, for small errors in the cup positions
 PEG_H = WELL_DEPTH - 0.4   # never bottoms out, so the plate sits on the rim
 PEG_CHAMFER = 0.6     # lead-in on the peg's tip
 PEG_REACH = BOSS_ALONG + PEG_D / 2 + 1.5   # plate edge beyond a post, on the side its peg is
@@ -128,7 +133,7 @@ def quad():
     hx, hy = PITCH_X / 2, PITCH_Y / 2
     posts = [(sx * hx, sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
     # Each panel's corner boss lies along the row, away from the crossing.
-    pegs = [(sx * (hx + BOSS_ALONG), sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
+    pegs = [(sx * (hx + BOSS_ALONG), sy * (hy + BOSS_IN)) for sx in (-1, 1) for sy in (-1, 1)]
     rx = hx + PEG_REACH
     return part((-rx, -hy - MARGIN, rx, hy + MARGIN), posts, (0, 0), pegs)
 
@@ -137,7 +142,7 @@ def pair_side():
     # The wall's left or right side is at -x; the row seam runs along x through y = 0.
     hy = PITCH_Y / 2
     posts = [(0, -hy), (0, hy)]
-    pegs = [(BOSS_ALONG, -hy), (BOSS_ALONG, hy)]
+    pegs = [(BOSS_ALONG, -hy - BOSS_IN), (BOSS_ALONG, hy + BOSS_IN)]
     lips = [(-LIP_OUT, -hy - MARGIN, -LIP_OUT + LIP_T, hy + MARGIN)]
     return part((-LIP_OUT, -hy - MARGIN, max(FAR, PEG_REACH), hy + MARGIN), posts, (OFFSET, 0), pegs, lips)
 
@@ -146,7 +151,7 @@ def pair_top():
     # The wall's top or bottom edge is at -y; the seam between the two panels runs along y.
     hx = PITCH_X / 2
     posts = [(-hx, 0), (hx, 0)]
-    pegs = [(-hx - BOSS_ALONG, 0), (hx + BOSS_ALONG, 0)]
+    pegs = [(-hx - BOSS_ALONG, BOSS_IN), (hx + BOSS_ALONG, BOSS_IN)]
     reach = hx + PEG_REACH
     lips = [(-reach, -LIP_OUT, reach, -LIP_OUT + LIP_T)]
     return part((-reach, -LIP_OUT, reach, FAR), posts, (0, OFFSET), pegs, lips)
@@ -158,8 +163,10 @@ def pair_mid():
     # row seams because the middle row is upside down, and turning the part round keeps it.
     hy = PITCH_Y / 2
     posts = [(0, -hy), (0, hy)]
-    pegs = [(BOSS_ALONG, hy), (-BOSS_ALONG, -hy)]
-    return part((-PEG_REACH, -hy - MARGIN, PEG_REACH, hy + MARGIN), posts, (OFFSET, 0), pegs)
+    pegs = [(MID_ALONG, hy + MID_IN), (-MID_ALONG, -hy - MID_IN)]
+    reach = MID_ALONG + PEG_D / 2 + 1.5
+    ry = hy + max(MARGIN, MID_IN + PEG_D / 2 + 1.5)
+    return part((-reach, -ry, reach, ry), posts, (OFFSET, 0), pegs)
 
 
 def _corner(peg):
@@ -172,11 +179,11 @@ def _corner(peg):
 
 
 def corner_a():
-    return _corner((BOSS_ALONG, 0))   # bottom-left and top-right, seen from behind
+    return _corner((BOSS_ALONG, BOSS_IN))   # bottom-left and top-right, seen from behind
 
 
 def corner_b():
-    return _corner((0, BOSS_ALONG))   # top-left and bottom-right: the mirror image
+    return _corner((BOSS_IN, BOSS_ALONG))   # top-left and bottom-right: the mirror image
 
 
 def print_pose(m):
