@@ -8,9 +8,10 @@ Junction mounts that hold the panels to the 2020 frame, and the blocks that hold
 
 | File | Part | Print |
 | --- | --- | --- |
-| `stl/quad.stl` | Four panel corners; its two wide-spaced pairs of magnet-boss pockets go along the rows | 6 |
-| `stl/pair_edge.stl` | Two posts across a seam on the wall's outer edge, with a lip down the panels' side: the left and right edges (onto the end stiles) and the top and bottom edges | 10 |
-| `stl/pair.stl` | The same without the lip, for the optional mid-edge posts on the row seams | 8 (optional) |
+| `stl/quad.stl` | Four panel corners; its magnet-boss pockets go along the rows | 6 |
+| `stl/pair_side.stl` | Two corners across a row seam at the wall's left or right edge, with a lip; onto an end stile | 4 |
+| `stl/pair_top.stl` | Two corners across a seam on the wall's top or bottom edge, with a lip; joins the panels only | 6 |
+| `stl/pair_mid.stl` | Two mid-edge posts across a row seam, no lip; onto a seam rail | 8 (optional) |
 | `stl/corner.stl` | One post at each outer corner of the wall, with lips down both outer sides | 4 |
 | `stl/hanger.stl` | Top of each end stile: keyhole that hangs on a screw in the wall | 2 |
 | `stl/bumper.stl` | Bottom of each end stile: rests on the wall | 2 |
@@ -31,16 +32,17 @@ Junction mounts that hold the panels to the 2020 frame, and the blocks that hold
 
 ## Fit one before printing the rest
 
-The posts' position, 6 mm in from each panel edge, is measured with a caliper on the panels
-(5.8 to 6.5 mm), so it is good to about half a millimetre. Print one quad and one
-`pair_edge`. Lay four panels face down with their corners together and screw the quad on
-with M3 x 10 screws: all four should start without forcing, and the quad should sit flat on
-the rims without rocking. Then fit the `pair_edge` at an outer edge: the lip should slide
-down the panels' side without forcing and without play. If all of that holds, print the
-rest.
+The post spacing is measured with a caliper on the panels: across a seam, with the LED faces
+butted, the posts are 16.25 mm apart along the rows (`PITCH_X`) and 16.0 mm apart across the
+row seams (`PITCH_Y`), each about 6.2 mm from its own plastic back's edge (`EDGE`). Print one
+quad and one `pair_side`. Lay four panels face down with their LED faces butted and screw
+the quad on with M3 x 10 screws: all four should start without forcing, and the quad should
+sit flat on the rims without rocking. Then fit the `pair_side` at an outer edge: the lip
+should slide down the panels' side without forcing and without play, and shouldn't stand
+past the LED board's edge. If all of that holds, print the rest.
 
-If the screws don't line up, measure from a post's centre to the panel's edge and set
-`POST_INSET`. If the quad rocks, a magnet boss stands taller than its pocket: measure how far
+If the screws don't line up, measure post centre to post centre across the seam that's off
+and set `PITCH_X` or `PITCH_Y`. If the quad rocks, a magnet boss stands taller than its pocket: measure how far
 the bosses stand above the rim and set `BOSS_POCKET` a millimetre deeper (keep
 `PLATE_T - INSERT_DEPTH - BOSS_POCKET` at 1 mm or more, raising `PLATE_T` if needed). If the
 lip binds or rattles, change `LIP_GAP`. All are at the top of `mounts.py`; then build the
@@ -55,6 +57,6 @@ python3 -m venv .tools/cad-venv
 The script checks each part is a clean solid with one through hole per post and at least
 2 mm of material between holes, then rewrites `stl/` and the drawing above. The other
 settings (plate thickness, counterbore, insert hole, the insert's 9 mm offset) are at the
-top of the same file too. The edge inserts sit `POST_INSET + OFFSET` (15 mm) in from the
-wall's left and right edges, on the end stiles (10 to 30 mm in): keep that figure between
+top of the same file too. The edge inserts sit `PITCH_X / 2 + OFFSET` (about 17 mm) in from
+the wall's left and right edges, on the end stiles (10 to 30 mm in): keep that figure between
 about 13 and 27 mm if you change either.

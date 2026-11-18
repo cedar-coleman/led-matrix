@@ -368,6 +368,7 @@ STRUTS = (415, 845)       # struts' left edges, between the seam rails, clear of
 SUPPLY_X = (180, 980)     # supplies' left edges on the lower seam rail's back
 BLOCKS_X = 656            # the two power blocks side by side from here
 BLOCK_T = 45              # wall blocks: the gap between the wall and the frame
+EDGE_INSERT = 17          # edge and corner mounts' inserts from the wall's edge (hardware/mounts.py)
 
 
 # ---- mounting ---------------------------------------------------------------------------
@@ -421,7 +422,7 @@ def mounting():
         s.text(f(x) + 32, py + 55, f"Supply {'AB'[i]}", size=12, weight="bold")
     s.rect(f(BLOCKS_X), py + 75, 64, 20, fill="#fde3c4", stroke=BLACK, sw=1.5)
     s.text(f(BLOCKS_X) + 32, py + 55, "blocks", size=12, weight="bold")
-    for x in (15, 320, 640, 960, 1265):
+    for x in (EDGE_INSERT, 320, 640, 960, 1280 - EDGE_INSERT):
         s.circle(f(x), py + 85, 5, fill=ORANGE, stroke=BLACK)
     for x in (169, 489, 809, 1129):
         s.circle(f(x), py + 85, 4, fill="white", stroke=ORANGE)
@@ -489,13 +490,14 @@ def frame():
         s.rect(bx + 32, ly - 20, 32, 39, fill="#d3e4f8", stroke=col, sw=2, rx=2)
     s.text(ox + BLOCKS_X + 64, ly + 40, "+5 V and GND blocks", size=13, weight="bold")
     # junction mounts at their inserts
-    fixed = [(15, 15), (W_ - 15, 15), (15, H_ - 15), (W_ - 15, H_ - 15)]
+    e = EDGE_INSERT
+    fixed = [(e, e), (W_ - e, e), (e, H_ - e), (W_ - e, H_ - e)]
     for k in (1, 2):
-        fixed += [(15, k * PH), (W_ - 15, k * PH)] + [(c * PW, k * PH) for c in (1, 2, 3)]
+        fixed += [(e, k * PH), (W_ - e, k * PH)] + [(c * PW, k * PH) for c in (1, 2, 3)]
     for x, y in fixed:
         s.circle(ox + x, oy + y, 11, fill=ORANGE, stroke=BLACK)
         s.circle(ox + x, oy + y, 4, fill=BLACK)
-    for y in (15, H_ - 15):
+    for y in (e, H_ - e):
         for c in (1, 2, 3):
             s.circle(ox + c * PW, oy + y, 9, fill="white", stroke=GREY)
     for k in (1, 2):
