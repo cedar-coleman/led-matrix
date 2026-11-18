@@ -155,12 +155,14 @@ made for.
   each long edge. Measured with a caliper, the plastic back stops about 2 mm short of the
   LED board on every side, and each post sits about 6.2 mm from its own back's edge. So with
   the LED faces butted, the posts on either side of a seam are 16.25 mm apart along the rows
-  and 16.0 mm apart across the row seams. A 13 mm round magnet boss sits in line with each
-  post, about 10.6 mm from it along the long edge.
+  and 16.0 mm apart across the row seams. A recessed magnet boss (a round cup) sits in line
+  with each post, about 10.6 mm from it along the long edge: towards the panel's middle at
+  the corners, and to one side at the mid-edge posts.
 
   A mount screws onto the posts of the panels that meet there (M3 x 10 into counterbores,
-  no washers), has pockets on its panel side to clear the magnet bosses, and carries an M5
-  heat-set insert for the frame screw. The mounts on the wall's outer edge also have a
+  no washers), has short pegs on its panel side that drop into the magnet-boss cups (so it
+  locates on the panels and can't twist), and carries an M5 heat-set insert for the frame
+  screw. The mounts on the wall's outer edge also have a
   1.4 mm lip that runs 8 mm down the panels' outer side, in the 2 mm step between the
   plastic back and the LED board's edge: hidden under the board's overhang, the lips frame
   the array and square it up without widening the wall. There's no step between two
@@ -170,9 +172,9 @@ made for.
 
   | Mount | Where | Fixed to | Number |
   | --- | --- | --- | --- |
-  | quad | where four panel corners meet; its pockets go along the rows | a seam rail | 6 |
+  | quad | where four panel corners meet; its long side and pegs go along the rows | a seam rail | 6 |
   | pair_side (lip) | two corners across a row seam at the wall's left or right edge | an end stile | 4 |
-  | corner (lips on two sides) | the wall's four outer corners | an end stile | 4 |
+  | corner_a and corner_b (lips on two sides; mirror images, so the peg points along the long edge) | seen from behind, corner_a bottom-left and top-right, corner_b top-left and bottom-right | an end stile | 2 + 2 |
   | pair_top (lip) | two corners across a seam on the top and bottom edges | nothing: joins the panels only | 6 |
   | pair_mid (no lip, optional) | the mid-edge posts across each row seam, halfway along each panel | a seam rail | 8 |
 
@@ -222,7 +224,7 @@ made for.
 
 | Hardware | Quantity |
 | --- | --- |
-| Junction mounts (`hardware/stl`), PETG or ASA | 20: 6 quad, 4 pair_side, 6 pair_top, 4 corner (plus 8 pair_mid for the optional mid-edge mounts) |
+| Junction mounts (`hardware/stl`), PETG or ASA | 20: 6 quad, 4 pair_side, 6 pair_top, 2 corner_a, 2 corner_b (plus 8 pair_mid for the optional mid-edge mounts) |
 | M5 heat-set inserts, one per fixed mount | 14 (22) |
 | Wall blocks (`hardware/stl`), PETG or ASA | 2 hangers, 2 bumpers |
 | M3 x 10 socket head screws into the panels' posts (no washers: the mounts are counterbored) | 48 (64) |
@@ -238,10 +240,9 @@ millimetre. Print one quad and one pair_side and test-fit them as in
 [`hardware/README.md`](../hardware/README.md) before printing the rest. While the panels are face down, check that
 nothing on the back within 20 mm of a seam stands taller than 12 mm; if something does, the
 frame would press on it, so raise `PLATE_T` to clear it. Check two more things on that first
-print: the quad sits flat on the panel rims with no rock (if a magnet boss holds it up,
-measure how far the bosses stand above the rim and set `BOSS_POCKET` a millimetre deeper),
-and, on the pair_side, the lip slides down the panels' side without forcing and without
-play (`LIP_GAP`).
+print: the quad's pegs drop into the magnet-boss cups and it sits flat with no rock, and,
+on the pair_side, the lip slides down the panels' side without forcing and without play
+(`LIP_GAP`).
 
 ### The supplies (LRS-100-5)
 

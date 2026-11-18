@@ -8,11 +8,12 @@ Junction mounts that hold the panels to the 2020 frame, and the blocks that hold
 
 | File | Part | Print |
 | --- | --- | --- |
-| `stl/quad.stl` | Four panel corners; its magnet-boss pockets go along the rows | 6 |
+| `stl/quad.stl` | Four panel corners; its long side and pegs go along the rows | 6 |
 | `stl/pair_side.stl` | Two corners across a row seam at the wall's left or right edge, with a lip; onto an end stile | 4 |
 | `stl/pair_top.stl` | Two corners across a seam on the wall's top or bottom edge, with a lip; joins the panels only | 6 |
 | `stl/pair_mid.stl` | Two mid-edge posts across a row seam, no lip; onto a seam rail | 8 (optional) |
-| `stl/corner.stl` | One post at each outer corner of the wall, with lips down both outer sides | 4 |
+| `stl/corner_a.stl` | Outer corner, lips down both outer sides; seen from behind, bottom-left and top-right | 2 |
+| `stl/corner_b.stl` | The mirror image: top-left and bottom-right | 2 |
 | `stl/hanger.stl` | Top of each end stile: keyhole that hangs on a screw in the wall | 2 |
 | `stl/bumper.stl` | Bottom of each end stile: rests on the wall | 2 |
 
@@ -22,7 +23,7 @@ Junction mounts that hold the panels to the 2020 frame, and the blocks that hold
 
 - PETG or ASA, not PLA: the mounts carry the wall and sit on warm panel backs.
 - Print flat, as the STL is oriented, with no supports. Mounts: back face down (the
-  counterbores and the insert hole on the bed), so the lips and the magnet-boss pockets
+  counterbores and the insert hole on the bed), so the lips and the pegs
   point up. Wall blocks: the wall face (counterbores and keyhole) down; the keyhole's
   pocket bridges 10 mm.
 - 4 walls, 40% infill or more, 0.2 mm layers. The holes need to be round, so check that the
@@ -42,10 +43,9 @@ should slide down the panels' side without forcing and without play, and shouldn
 past the LED board's edge. If all of that holds, print the rest.
 
 If the screws don't line up, measure post centre to post centre across the seam that's off
-and set `PITCH_X` or `PITCH_Y`. If the quad rocks, a magnet boss stands taller than its pocket: measure how far
-the bosses stand above the rim and set `BOSS_POCKET` a millimetre deeper (keep
-`PLATE_T - INSERT_DEPTH - BOSS_POCKET` at 1 mm or more, raising `PLATE_T` if needed). If the
-lip binds or rattles, change `LIP_GAP`. All are at the top of `mounts.py`; then build the
+and set `PITCH_X` or `PITCH_Y`. The pegs drop into the magnet bosses' cups. The cups measure 12 mm across and 2 mm deep (`WELL_D`, `WELL_DEPTH`); the pegs are 11.2 mm
+across and 1.6 mm tall, so they locate without bottoming out. If a peg sits beside its cup instead of in it, measure post centre to cup centre
+and set `BOSS_ALONG`. If the lip binds or rattles, change `LIP_GAP`. All are at the top of `mounts.py`; then build the
 STLs again:
 
 ```sh

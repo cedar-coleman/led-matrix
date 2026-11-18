@@ -5,15 +5,17 @@ insert, which takes the M5 x 25 screw driven through the frame from behind. In w
 x runs along the rows (the panels' long edges) and y up and down the wall:
 
   quad       where four panel corners meet: four posts, insert in the middle (on a seam
-             rail). It has a direction: its pockets go along the rows
+             rail). It has a direction: its pegs go along the rows
   pair_side  two corners across a row seam at the wall's left or right edge, with a lip down
              the panels' outer side; insert OFFSET in from the posts, on an end stile
   pair_top   two corners across a seam on the wall's top or bottom edge, with a lip; joins
              the panels only (no rail there unless you add one)
   pair_mid   two mid-edge posts across a row seam, no lip (optional); insert OFFSET along
              the seam, on a seam rail
-  corner     one post at each of the wall's four outer corners, with lips down both outer
-             sides; insert OFFSET in on both axes, on an end stile
+  corner_a   one post at an outer corner, with lips down both outer sides; insert OFFSET in
+  corner_b   on both axes, on an end stile. Mirror images (the peg points along the long
+             edge): seen from behind, corner_a goes bottom-left and top-right, corner_b
+             top-left and bottom-right
 
 Measured on the panels: the plastic backs stop short of the LED board by about BACK_INSET
 on every side, and each M3 post sits about EDGE from its own back's outer side. So across a
@@ -22,12 +24,15 @@ apart across the row seams. A lip sits in the BACK_INSET step under the LED boar
 overhang: it doesn't widen the wall or show. A lip only ever goes on the outside of the
 wall: between two panels there's no room for one.
 
-Every panel has a magnet boss (BOSS_D) in line with each M3 post, BOSS_ALONG from it along
-the long edge: towards the panel's middle at the corners, and to one side or the other at
-the mid-edge posts. The plates have pockets over them, BOSS_POCKET deep, so a boss that
-stands proud of the rim can't hold a plate off its posts.
+Every panel has a recessed magnet boss (a cup, WELL_D across) in line with each M3 post,
+BOSS_ALONG from it along the long edge: towards the panel's middle at the corners, and to
+one side at the mid-edge posts. Each mount has a short chamfered peg (PEG_D, PEG_H) under it
+that drops into the cup, so the mount locates on the panel and can't twist. Across a row
+seam the two mid-edge cups are on opposite sides; with the middle row upside down it comes
+out the same at both seams: seen from behind, the upper panel's cup is right of its post and
+the lower panel's left.
 
-Every part prints back face down, as the STL is oriented: lips and pockets point up, no
+Every part prints back face down, as the STL is oriented: lips and pegs point up, no
 supports.
 
 Wall blocks hold the frame BLOCK_T off the wall, screwed into the end stiles' rear slots:
@@ -55,21 +60,24 @@ EDGE = 6.2            # post centre to its plastic back's outer side (measured 5
 BACK_INSET = min(PITCH_X, PITCH_Y) / 2 - EDGE   # the back's step in from the LED board's edge
 
 # Plate and holes (mm)
-PLATE_T = 12.0        # plate thickness: room for the boss pockets below the insert
+PLATE_T = 12.0        # plate thickness: also the gap between the panel backs and the frame
 M3_HOLE = 3.4         # M3 clearance
 HEAD_D = 6.2          # counterbore for an M3 socket head (5.5 mm), so no washer is needed
 HEAD_DEPTH = 6.5      # leaves 5.5 mm under the head: an M3 x 10 goes 4.5 mm into the post
 INSERT_D = 6.4        # M5 heat-set insert hole: use the insert maker's figure
-INSERT_DEPTH = 7.0    # blind, from the back face; its floor is 1.5 mm above the boss pockets
+INSERT_DEPTH = 7.0    # blind, from the back face; leaves a 5 mm floor
 OFFSET = 9.0          # pairs and corner: insert centre from the posts' line
 MARGIN = 7.0          # plate edge beyond a hole centre, except on a wall edge
 FAR = OFFSET + INSERT_D / 2 + 3.8   # plate edge beyond the posts' line, on the insert's side
 
 # The panels' magnet bosses and the edge lips (mm)
-BOSS_ALONG = 10.6     # boss centre from its M3 post, along the panel's long edge
-BOSS_D = 13.2
-BOSS_POCKET_D = BOSS_D + 1.8
-BOSS_POCKET = 3.5     # pocket depth from the panel face: more than the bosses stand proud of the rim
+BOSS_ALONG = 10.6     # magnet boss centre from its M3 post, along the panel's long edge
+WELL_D = 12.0         # inside diameter of the boss's cup (measured)
+WELL_DEPTH = 2.0      # the cup's depth (measured)
+PEG_D = WELL_D - 0.8  # 0.4 mm clearance all round, for small errors in BOSS_ALONG
+PEG_H = WELL_DEPTH - 0.4   # never bottoms out, so the plate sits on the rim
+PEG_CHAMFER = 0.6     # lead-in on the peg's tip
+PEG_REACH = BOSS_ALONG + PEG_D / 2 + 1.5   # plate edge beyond a post, on the side its peg is
 LIP_T = 1.4           # lip thickness
 LIP_DEPTH = 8.0       # how far the lip runs down the panel's side (the panel is about 15.5 mm deep)
 LIP_GAP = 0.2         # clearance between the lip and the panel's side
@@ -100,63 +108,75 @@ def insert_hole(x, y):
     return hole.translate((x, y, PLATE_T - INSERT_DEPTH))
 
 
-def part(outline, posts, insert, pockets=(), lips=()):
+def part(outline, posts, insert, pegs=(), lips=()):
     """A mount in its working position: panel face at z = 0, back face at z = PLATE_T. Lips
     are (x0, y0, x1, y1) strips that run from the panel face down the panel's side."""
     body = plate(*outline)
     for x, y in posts:
         body -= screw_hole(x, y)
     body -= insert_hole(*insert)
-    for x, y in pockets:
-        body -= Manifold.cylinder(BOSS_POCKET + 1, BOSS_POCKET_D / 2, circular_segments=SEGMENTS).translate(
-            (x, y, -1))
+    for x, y in pegs:
+        r = PEG_D / 2
+        body += Manifold.cylinder(PEG_H + 0.01, r - PEG_CHAMFER, r, circular_segments=SEGMENTS).translate(
+            (x, y, -PEG_H))
     for x0, y0, x1, y1 in lips:
         body += Manifold.cube((x1 - x0, y1 - y0, LIP_DEPTH + 0.01)).translate((x0, y0, -LIP_DEPTH))
-    return dict(m=body, posts=posts, insert=insert, pockets=list(pockets), lips=list(lips))
+    return dict(m=body, posts=posts, insert=insert, pegs=list(pegs), lips=list(lips))
 
 
 def quad():
     hx, hy = PITCH_X / 2, PITCH_Y / 2
     posts = [(sx * hx, sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
     # Each panel's corner boss lies along the row, away from the crossing.
-    pockets = [(sx * (hx + BOSS_ALONG), sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
-    return part((-hx - MARGIN, -hy - MARGIN, hx + MARGIN, hy + MARGIN), posts, (0, 0), pockets)
+    pegs = [(sx * (hx + BOSS_ALONG), sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
+    rx = hx + PEG_REACH
+    return part((-rx, -hy - MARGIN, rx, hy + MARGIN), posts, (0, 0), pegs)
 
 
 def pair_side():
     # The wall's left or right side is at -x; the row seam runs along x through y = 0.
     hy = PITCH_Y / 2
     posts = [(0, -hy), (0, hy)]
-    pockets = [(BOSS_ALONG, -hy), (BOSS_ALONG, hy)]
+    pegs = [(BOSS_ALONG, -hy), (BOSS_ALONG, hy)]
     lips = [(-LIP_OUT, -hy - MARGIN, -LIP_OUT + LIP_T, hy + MARGIN)]
-    return part((-LIP_OUT, -hy - MARGIN, FAR, hy + MARGIN), posts, (OFFSET, 0), pockets, lips)
+    return part((-LIP_OUT, -hy - MARGIN, max(FAR, PEG_REACH), hy + MARGIN), posts, (OFFSET, 0), pegs, lips)
 
 
 def pair_top():
     # The wall's top or bottom edge is at -y; the seam between the two panels runs along y.
     hx = PITCH_X / 2
     posts = [(-hx, 0), (hx, 0)]
-    pockets = [(-hx - BOSS_ALONG, 0), (hx + BOSS_ALONG, 0)]
-    lips = [(-hx - MARGIN, -LIP_OUT, hx + MARGIN, -LIP_OUT + LIP_T)]
-    return part((-hx - MARGIN, -LIP_OUT, hx + MARGIN, FAR), posts, (0, OFFSET), pockets, lips)
+    pegs = [(-hx - BOSS_ALONG, 0), (hx + BOSS_ALONG, 0)]
+    reach = hx + PEG_REACH
+    lips = [(-reach, -LIP_OUT, reach, -LIP_OUT + LIP_T)]
+    return part((-reach, -LIP_OUT, reach, FAR), posts, (0, OFFSET), pegs, lips)
 
 
 def pair_mid():
-    # Mid-edge posts across a row seam (along x through y = 0). Each panel's boss is to one
-    # side along the seam, and the two panels' are on opposite sides: pocket all four.
+    # Mid-edge posts across a row seam (along x through y = 0), seen from behind with y up:
+    # the upper panel's cup is right of its post, the lower panel's left. That holds at both
+    # row seams because the middle row is upside down, and turning the part round keeps it.
     hy = PITCH_Y / 2
     posts = [(0, -hy), (0, hy)]
-    pockets = [(sx * BOSS_ALONG, sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
-    return part((-MARGIN, -hy - MARGIN, FAR, hy + MARGIN), posts, (OFFSET, 0), pockets)
+    pegs = [(BOSS_ALONG, hy), (-BOSS_ALONG, -hy)]
+    return part((-PEG_REACH, -hy - MARGIN, PEG_REACH, hy + MARGIN), posts, (OFFSET, 0), pegs)
 
 
-def corner():
-    # The wall's outer corner is beyond (-EDGE, -EDGE); lips down both outer sides. The boss
-    # lies along the long edge, which is x at two corners and, turned over, y at the other
-    # two: pocket both, so one part fits all four.
-    pockets = [(BOSS_ALONG, 0), (0, BOSS_ALONG)]
-    lips = [(-LIP_OUT, -LIP_OUT, FAR, -LIP_OUT + LIP_T), (-LIP_OUT, -LIP_OUT, -LIP_OUT + LIP_T, FAR)]
-    return part((-LIP_OUT, -LIP_OUT, FAR, FAR), [(0, 0)], (OFFSET, OFFSET), pockets, lips)
+def _corner(peg):
+    # The wall's outer corner is beyond (-EDGE, -EDGE); lips down both outer sides; the peg
+    # points along the panel's long edge. Seen from behind with y up, this fits the
+    # bottom-left corner as drawn and the top-right turned half round.
+    far = max(FAR, PEG_REACH)
+    lips = [(-LIP_OUT, -LIP_OUT, far, -LIP_OUT + LIP_T), (-LIP_OUT, -LIP_OUT, -LIP_OUT + LIP_T, far)]
+    return part((-LIP_OUT, -LIP_OUT, far, far), [(0, 0)], (OFFSET, OFFSET), [peg], lips)
+
+
+def corner_a():
+    return _corner((BOSS_ALONG, 0))   # bottom-left and top-right, seen from behind
+
+
+def corner_b():
+    return _corner((0, BOSS_ALONG))   # top-left and bottom-right: the mirror image
 
 
 def print_pose(m):
@@ -263,8 +283,8 @@ def preview(parts, path):
         ax = fig.add_subplot(2, len(parts), col + 1 + len(parts))
         blo, bhi = d["m"].bounding_box()[:3], d["m"].bounding_box()[3:]
         x0, y0, x1, y1 = blo[0], blo[1], bhi[0], bhi[1]
-        for x, y in d["pockets"]:
-            ax.add_patch(Circle((x, y), BOSS_POCKET_D / 2, fill=False, ls=":", color="#2d5f63"))
+        for x, y in d["pegs"]:
+            ax.add_patch(Circle((x, y), PEG_D / 2, color="#9ccfd2"))
         for lx0, ly0, lx1, ly1 in d["lips"]:
             ax.add_patch(plt.Rectangle((lx0, ly0), lx1 - lx0, ly1 - ly0, color="#6fb3b8"))
         ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, lw=1.5))
@@ -280,7 +300,8 @@ def preview(parts, path):
         ax.set_title(f"{x1 - x0:.0f} x {y1 - y0:.0f} x {PLATE_T:g} mm{lip}, seen from the back", fontsize=9)
         ax.tick_params(labelsize=7)
     fig.suptitle(f"Junction mounts, seen from the back, x along the rows: posts {PITCH_X:g} mm apart along the rows, "
-                 f"{PITCH_Y:g} mm across the row seams. Dotted: magnet-boss pockets. Shaded: lips.", fontsize=12)
+                 f"{PITCH_Y:g} mm across the row seams. Light circles: pegs into the magnet-boss cups. Shaded: lips.",
+                 fontsize=12)
     fig.tight_layout()
     fig.savefig(path, dpi=110)
 
@@ -323,7 +344,7 @@ def preview_blocks(path):
 
 def main():
     parts = {"quad": quad(), "pair_side": pair_side(), "pair_top": pair_top(), "pair_mid": pair_mid(),
-             "corner": corner()}
+             "corner_a": corner_a(), "corner_b": corner_b()}
     for name, d in parts.items():
         m, posts, insert = d["m"], d["posts"], d["insert"]
         assert m.status().name == "NoError", (name, m.status())
@@ -332,9 +353,13 @@ def main():
         web = wall_thickness(posts, insert)
         assert web >= 2.0, f"{name}: only {web:.1f} mm between holes"
         lo, hi = np.asarray(m.bounding_box()[:3]), np.asarray(m.bounding_box()[3:])
-        # The insert's floor stays clear of the boss pockets, and the lip fits in the back's step.
+        # The lip fits in the back's step; each peg stands clear of the screw holes.
         assert LIP_GAP + LIP_T <= BACK_INSET + 0.05, "the lip would stand outside the LED board's edge"
-        assert PLATE_T - INSERT_DEPTH - BOSS_POCKET >= 1.0, "insert hole breaks into a boss pocket"
+        for px, py in d["pegs"]:
+            gap = min(np.hypot(px - x, py - y) for x, y in posts) - PEG_D / 2 - M3_HOLE / 2
+            assert gap >= 1.0, f"{name}: a peg crowds a screw hole ({gap:.1f} mm)"
+            assert lo[0] + 1 <= px - PEG_D / 2 and px + PEG_D / 2 <= hi[0] - 1 and \
+                lo[1] + 1 <= py - PEG_D / 2 and py + PEG_D / 2 <= hi[1] - 1, f"{name}: a peg overhangs the plate"
         write_stl(print_pose(m), ROOT / "stl" / f"{name}.stl")
         print(f"{name:9s} {hi[0] - lo[0]:.0f} x {hi[1] - lo[1]:.0f} x {hi[2] - lo[2]:.0f} mm, "
               f"{m.volume() / 1000:.1f} cm3, thinnest web {web:.1f} mm, {m.num_tri()} triangles")
