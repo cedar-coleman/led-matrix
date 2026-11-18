@@ -225,6 +225,7 @@ def write_stl(manifold, path):
     mesh = manifold.to_mesh()
     v = np.asarray(mesh.vert_properties)[:, :3]
     t = np.asarray(mesh.tri_verts)
+    v = v - v.min(axis=0)   # every coordinate positive, the part's corner at the origin
     tri = v[t]
     n = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
     n /= np.linalg.norm(n, axis=1, keepdims=True)
@@ -232,7 +233,7 @@ def write_stl(manifold, path):
     rec["n"], rec["v"] = n, tri
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
-        f.write(b"junction mount, esp32-gym-matrix hardware/mounts.py".ljust(80, b" "))
+        f.write(b"binary STL, esp32-gym-matrix hardware/mounts.py, mm".ljust(80, b"\0"))
         f.write(np.uint32(len(t)).tobytes())
         f.write(rec.tobytes())
 
