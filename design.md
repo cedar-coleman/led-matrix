@@ -27,12 +27,12 @@ are assumptions that a hardware spike has to confirm before the design is final.
 | Viewing distance | 5 to 25 ft |
 | Units | kg only, in 0.5 kg steps (the chalkboard has 136.5, 250.5, 101.5) |
 | Wi-Fi | Plain password network, 2.4 GHz |
-| Panel chips (from photos) | Column drivers: Chipone ICN2037BP. Input buffer: 74HC245 (helps the signal survive a 12-panel chain) |
+| Panel chips (from photos) | Column drivers: 24 x Chipone ICN2037BP (batch D10255NB). Row drivers: 4 x Fine Made TC7262G (T1 to T4, batch A002435), each 8 rows with a built-in 3-to-8 decoder. Input buffer: 74HC245 (helps the signal survive a 12-panel chain). Header: standard HUB75 pinout, A to D only (1/16 scan, no E) |
 
 | Unknown | Why it matters | How we find out |
 | --- | --- | --- |
 | Does the library's default driver setting (`SHIFTREG`) work with the **Chipone ICN2037BP** column drivers? Expected yes: the ICN2037 is a plain 16-channel constant-current shift register. The chip that needs the FM6126A init sequence is the ICN2038S, a different part. Not confirmed for this library by any source found | Wrong setting means a blank or garbled panel | Spike test 2: run `07_Pixel_Mapping_Test` with `SHIFTREG`. If the panel is blank or noisy, try `FM6126A`, then lower the pixel clock |
-| Row-select chip (marked "T4" on the board, part number not readable) | Some panels use row drivers that need a different addressing mode | Same test. If rows are doubled or skipped, read the chip marking |
+| Row drivers: **Fine Made TC7262G** (read from the chips). The TC7262 family (TC7262FJ and TC7262C datasheets; no G-suffix datasheet found) is an 8-channel row-scan driver with a built-in 74HC138-style 3-to-8 decoder and blanking, so plain A to D addressing should drive it, with no special row mode. The library's unsupported list (SM1620B, RUL5358, ICN2053 / FM6353) doesn't include it | Row drivers that are shift registers need a different addressing mode; this one decodes A to D itself | Same test. If rows are doubled or skipped, the G suffix differs from its siblings |
 | Whether SD reads work while the display DMA runs | Decides SD vs. internal flash for media | Spike test 3 (section 9) |
 | Refresh rate with a 768-pixel-wide chain | Low refresh shows as rolling bands when members film lifts on their phones | The library computes it at init; confirm with a phone camera |
 | Number of HUB75 outputs on the board (one is assumed) | Two outputs would let us split the wall into two shorter chains | Schematic in Waveshare Resources |
