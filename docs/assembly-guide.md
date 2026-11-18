@@ -131,8 +131,8 @@ the wall, and the supplies and the power blocks ride on the back of the lower ra
 gap, so nothing shows below or beside the screen. It takes four 48 in lengths.
 
 **Why it is built this way.** Each mount carries its share of the panels' weight at the
-distance from the frame's face to the panels' centre of mass: about 16 mm with the frame
-directly behind the panels, against about 46 mm if the mounts stood on 30 mm spacers. The
+distance from the frame's face to the panels' centre of mass: about 20 mm with the frame
+directly behind the panels, against about 50 mm if the mounts stood on 30 mm spacers. The
 depth the supplies need goes between the frame and the wall instead, where the load is
 mostly compression: the bottom blocks push on the wall, and the two top screws resist a pull
 of only about 20 N (10 kg roughly 80 mm out from the wall, with about 420 mm between the top
@@ -146,24 +146,29 @@ made for.
 - **Struts:** 2020, 140 mm, between the seam rails, with their left edges 415 and 845 mm from
   the wall's left edge (seen from behind). They tie the rails at a fixed spacing. **Not on
   the vertical seams:** each row's HUB75 ribbons cross the seams at mid-height, and the frame
-  is only 9 mm behind the panel backs. These two spots are clear of every ribbon, header and
+  is only 12 mm behind the panel backs. These two spots are clear of every ribbon, header and
   power socket.
 - **Corner brackets:** two at each joint, in the inside corners, bolted into the side slots
   of the two pieces they join: 8 for the rail-stile joints, 4 for the struts.
 - **Junction mounts** (printed parts in [`hardware/`](../hardware/README.md)). Each panel has
   six M3 posts on its back: one about 6 mm in from each corner and one at the middle of each
-  long edge. A mount screws onto the posts of the panels that meet there (M3 x 10 into
-  counterbores, no washers) and carries an M5 heat-set insert for the frame screw:
+  long edge, with a 12 mm round magnet boss about 10.5 mm along the long edge from each one.
+  A mount screws onto the posts of the panels that meet there (M3 x 10 into counterbores,
+  no washers), has pockets on its panel side to clear the magnet bosses, and carries an M5
+  heat-set insert for the frame screw. The mounts on the wall's outer edge also have a lip
+  that runs 8 mm down the panels' outer side: together the lips frame the array and square
+  it up. Lips only go on the outside: between two panels a lip would push them apart and
+  open a dark line at the seam.
 
   ![Junction mounts](diagrams/junction-mounts.png)
 
   | Mount | Where | Fixed to | Number |
   | --- | --- | --- | --- |
-  | quad | where four panel corners meet | a seam rail | 6 |
-  | pair | two corners across a row seam at the wall's left or right edge | an end stile | 4 |
-  | corner | the wall's four outer corners | an end stile | 4 |
-  | pair | two corners across a seam on the top and bottom edges | nothing: joins the panels only | 6 |
-  | pair (optional) | the mid-edge posts across each row seam, halfway along each panel | a seam rail | 8 |
+  | quad | where four panel corners meet; its two wide-spaced pairs of pockets go along the rows | a seam rail | 6 |
+  | pair_edge (lip) | two corners across a row seam at the wall's left or right edge | an end stile | 4 |
+  | corner (lips on two sides) | the wall's four outer corners | an end stile | 4 |
+  | pair_edge (lip) | two corners across a seam on the top and bottom edges | nothing: joins the panels only | 6 |
+  | pair (no lip, optional) | the mid-edge posts across each row seam, halfway along each panel | a seam rail | 8 |
 
   That fixes 14 mounts (22 with the optional ones), and every panel to the frame at two or
   more corners. The top and bottom edge pairs keep those seams flush; if the long top and
@@ -176,13 +181,14 @@ made for.
   hole takes up about 0.5 mm of error), lay the frame back and drive an **M5 x 25 socket
   head screw with a washer** from the frame's back into each insert: 20 mm of extrusion,
   about 5 mm into the insert. Fit everything loosely, push the panels flush, then tighten.
-- **Gaps.** The mount's 9 mm is the gap between the panel backs and the frame: enough for
+- **Gaps.** The mount's 12 mm is the gap between the panel backs and the frame: enough for
   the two row-to-row ribbons and the power leads to pass over it. Away from the frame there
-  is about 74 mm between the panel backs and the wall. Check one panel with its leads plugged in before you
+  is about 77 mm between the panel backs and the wall. Check one panel with its leads plugged in before you
   commit.
-- **The controller board.** It plugs onto panel 1's IN header, about 47 mm in from the
-  panel's outer edge (scaled from the supplier's photo), right beside the left end stile
-  (seen from behind). Plug it in and measure from the panel's outer edge to the board's
+- **The controller board.** It plugs onto panel 1's IN header, 48 to 50 mm in from the
+  panel's outer edge (measured), right beside the left end stile (seen from behind). A
+  board 42 to 50 mm wide centred on that header comes within about 24 to 29 mm of the edge,
+  so expect it to hit the stile unless its socket sits off-centre. Plug it in and measure from the panel's outer edge to the board's
   nearest edge: **32 mm or more** and it clears the stile. If it's less, mount the board on
   the frame instead, joined to panel 1's IN by a short HUB75 ribbon through a 2 x 8 male-male
   pin header (the ribbon and the board's socket are both female).
@@ -210,7 +216,7 @@ made for.
 
 | Hardware | Quantity |
 | --- | --- |
-| Junction mounts (`hardware/stl`), PETG or ASA | 20: 6 quad, 10 pair, 4 corner (plus 8 pair for the optional mid-edge mounts) |
+| Junction mounts (`hardware/stl`), PETG or ASA | 20: 6 quad, 10 pair_edge, 4 corner (plus 8 pair for the optional mid-edge mounts) |
 | M5 heat-set inserts, one per fixed mount | 14 (22) |
 | Wall blocks (`hardware/stl`), PETG or ASA | 2 hangers, 2 bumpers |
 | M3 x 10 socket head screws into the panels' posts (no washers: the mounts are counterbored) | 48 (64) |
@@ -226,8 +232,12 @@ panel's back, so it is good to about 1 mm. Print one quad and screw it onto four
 laid face down: if the screws start without forcing, print the rest. If not, measure post
 centre to panel edge, set `POST_INSET` in `hardware/mounts.py` and run it again (see
 [`hardware/README.md`](../hardware/README.md)). While the panels are face down, check that
-nothing on the back within 20 mm of a seam stands taller than 9 mm; if something does, the
-frame would press on it, so raise `PLATE_T` to clear it.
+nothing on the back within 20 mm of a seam stands taller than 12 mm; if something does, the
+frame would press on it, so raise `PLATE_T` to clear it. Check two more things on that first
+print: the quad sits flat on the panel rims with no rock (if a magnet boss holds it up,
+measure how far the bosses stand above the rim and set `BOSS_POCKET` a millimetre deeper),
+and, on a printed `pair_edge`, the lip slides down the panel's side without forcing and
+without play (`LIP_GAP`).
 
 ### The supplies (LRS-100-5)
 

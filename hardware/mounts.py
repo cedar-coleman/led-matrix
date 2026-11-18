@@ -3,14 +3,26 @@
 Junction mounts screw onto the panels' M3 posts from the back. Each carries an M5 heat-set
 insert, which takes the M5 x 25 screw driven through the frame from behind:
 
-  quad    where four panel corners meet: four posts on a square, insert in the middle (on a
-          seam rail)
-  pair    two posts across a seam; the insert sits OFFSET to one side, clear of the screw
-          heads. At the wall's left and right edges it lands on an end stile; on the row
-          seams' mid-edge posts (optional) on a seam rail; on the top and bottom edges it
-          only joins the panels (no rail there unless you add one)
-  corner  one post at each of the wall's four outer corners; insert OFFSET in on both axes,
-          on an end stile
+  quad       where four panel corners meet: four posts on a square, insert in the middle
+             (on a seam rail)
+  pair_edge  two posts across a seam at the wall's outer edge, with a lip down the panels'
+             outer side; the insert sits OFFSET in, clear of the screw heads. On the left and
+             right edges it lands on an end stile; on the top and bottom edges it only joins
+             the panels (no rail there unless you add one)
+  pair       the same without the lip, for the optional mid-edge posts on the row seams
+  corner     one post at each of the wall's four outer corners, with a lip down both outer
+             sides; insert OFFSET in on both axes, on an end stile
+
+A lip only ever goes on the outside of the wall: between two panels it would push them
+apart and open a dark line at the seam. The lips together frame the array and square it up.
+
+Every panel has a 12 mm magnet boss beside each M3 post (BOSS_ALONG along the long edge,
+BOSS_IN further in). The plates have pockets over them, BOSS_POCKET deep, so a boss that
+stands proud of the rim can't hold a plate off its posts. The quad has a direction: its
+two widely spaced pairs of pockets go along the rows.
+
+Every part prints back face down, as the STL is oriented: lips and pockets point up, no
+supports.
 
 Wall blocks hold the frame BLOCK_T off the wall, screwed into the end stiles' rear slots:
 
@@ -33,19 +45,29 @@ import numpy as np
 from manifold3d import Manifold
 
 # Panel posts (mm)
-POST_INSET = 6.0      # post centre from each panel edge, scaled from the supplier's photo
+POST_INSET = 6.0      # post centre from each panel edge (measured 5.8 to 6.5 mm on the panels)
 SEAM_GAP = 0.0        # gap between neighbouring panels; they butt together
 PITCH = 2 * POST_INSET + SEAM_GAP   # post to post across a seam
 
 # Plate and holes (mm)
-PLATE_T = 9.0         # plate thickness
+PLATE_T = 12.0        # plate thickness: room for the boss pockets below the insert
 M3_HOLE = 3.4         # M3 clearance
 HEAD_D = 6.2          # counterbore for an M3 socket head (5.5 mm), so no washer is needed
-HEAD_DEPTH = 3.5      # leaves 5.5 mm under the head: an M3 x 10 goes 4.5 mm into the post
+HEAD_DEPTH = 6.5      # leaves 5.5 mm under the head: an M3 x 10 goes 4.5 mm into the post
 INSERT_D = 6.4        # M5 heat-set insert hole: use the insert maker's figure
-INSERT_DEPTH = 7.5    # blind, from the back face; leaves a 1.5 mm floor
+INSERT_DEPTH = 7.0    # blind, from the back face; its floor is 1.5 mm above the boss pockets
 OFFSET = 9.0          # pair and corner: insert centre from the posts' line
 MARGIN = 7.0          # plate edge beyond a hole centre, except on a wall edge
+
+# The panels' magnet bosses and the edge lips (mm)
+BOSS_ALONG = 10.5     # boss centre from its M3 post, along the panel's long edge
+BOSS_IN = 3.0         # and this much further in from the long edge
+BOSS_POCKET_D = 13.5  # the 12 mm boss, plus clearance
+BOSS_POCKET = 3.5     # pocket depth from the panel face: more than the bosses stand proud of the rim
+LIP_T = 1.6           # lip thickness
+LIP_DEPTH = 8.0       # how far the lip runs down the panel's side (the panel is about 15.5 mm deep)
+LIP_GAP = 0.3         # clearance between the lip and the panel's side
+LIP_OUT = POST_INSET + LIP_GAP + LIP_T   # plate edge to post line, on a lipped side
 CORNER_R = 2.0        # plate corner radius
 SEGMENTS = 64
 
@@ -72,34 +94,74 @@ def insert_hole(x, y):
     return hole.translate((x, y, PLATE_T - INSERT_DEPTH))
 
 
-def part(outline, posts, insert):
+def part(outline, posts, insert, pockets=(), lips=()):
+    """A mount in its working position: panel face at z = 0, back face at z = PLATE_T. Lips
+    are (x0, y0, x1, y1) strips that run from the panel face down the panel's side."""
     body = plate(*outline)
     for x, y in posts:
         body -= screw_hole(x, y)
-    return body - insert_hole(*insert)
+    body -= insert_hole(*insert)
+    for x, y in pockets:
+        body -= Manifold.cylinder(BOSS_POCKET + 1, BOSS_POCKET_D / 2, circular_segments=SEGMENTS).translate(
+            (x, y, -1))
+    for x0, y0, x1, y1 in lips:
+        body += Manifold.cube((x1 - x0, y1 - y0, LIP_DEPTH + 0.01)).translate((x0, y0, -LIP_DEPTH))
+    return dict(m=body, posts=posts, insert=insert, pockets=list(pockets), lips=list(lips))
 
 
 def quad():
+    # x along the rows (the panels' long edges), y up and down the wall.
     h = PITCH / 2
     e = h + MARGIN
     posts = [(sx * h, sy * h) for sx in (-1, 1) for sy in (-1, 1)]
-    return part((-e, -e, e, e), posts, (0, 0)), posts, (0, 0)
+    bx, by = POST_INSET + BOSS_ALONG, POST_INSET + BOSS_IN
+    pockets = [(sx * bx, sy * by) for sx in (-1, 1) for sy in (-1, 1)]
+    return part((-e, -e, e, e), posts, (0, 0), pockets)
 
 
-def pair():
-    # Posts along x; the wall's outer edge (or the seam's far side) is at -y.
+def _pair(lip):
+    # Posts along x, across the seam; the wall's outer edge (or the seam's far side) is at -y.
     h = PITCH / 2
     e = h + MARGIN
     posts = [(-h, 0), (h, 0)]
     insert = (0, OFFSET)
-    return part((-e, -POST_INSET, e, OFFSET + INSERT_D / 2 + 3.8), posts, insert), posts, insert
+    y0 = -LIP_OUT if lip else -POST_INSET
+    across = POST_INSET + BOSS_IN
+    if lip:
+        # On the left and right edges the bosses sit BOSS_ALONG in from the wall; on the top
+        # and bottom edges, beside each post along the edge. Pocket both.
+        pockets = [(-across, BOSS_ALONG), (across, BOSS_ALONG),
+                   (-(POST_INSET + BOSS_ALONG), BOSS_IN), (POST_INSET + BOSS_ALONG, BOSS_IN)]
+        lips = [(-e, -LIP_OUT, e, -LIP_OUT + LIP_T)]
+    else:
+        # Mid-edge posts: each panel's boss is BOSS_ALONG to one side; which side depends on
+        # the panel, so pocket both.
+        pockets = [(sx * across, sy * BOSS_ALONG) for sx in (-1, 1) for sy in (-1, 1)]
+        lips = []
+    return part((-e, y0, e, OFFSET + INSERT_D / 2 + 3.8), posts, insert, pockets, lips)
+
+
+def pair_edge():
+    return _pair(lip=True)
+
+
+def pair():
+    return _pair(lip=False)
 
 
 def corner():
-    # The wall's outer corner is at (-POST_INSET, -POST_INSET).
+    # The wall's outer corner is at (-POST_INSET, -POST_INSET); lips down both outer sides.
     far = OFFSET + INSERT_D / 2 + 3.8
     insert = (OFFSET, OFFSET)
-    return part((-POST_INSET, -POST_INSET, far, far), [(0, 0)], insert), [(0, 0)], insert
+    # The long edge may run along either axis: pocket both.
+    pockets = [(BOSS_ALONG, BOSS_IN), (BOSS_IN, BOSS_ALONG)]
+    lips = [(-LIP_OUT, -LIP_OUT, far, -LIP_OUT + LIP_T), (-LIP_OUT, -LIP_OUT, -LIP_OUT + LIP_T, far)]
+    return part((-LIP_OUT, -LIP_OUT, far, far), [(0, 0)], insert, pockets, lips)
+
+
+def print_pose(m):
+    """Back face down: turn the part over (a rotation, not a mirror) and stand it on z = 0."""
+    return m.rotate((180, 0, 0)).translate((0, 0, PLATE_T))
 
 
 # Wall blocks (mm). x across the stile, y up the wall, z from the wall face (z = 0, printed
@@ -183,7 +245,8 @@ def preview(parts, path):
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
     fig = plt.figure(figsize=(4 * len(parts), 7.5))
-    for col, (name, (m, posts, insert)) in enumerate(parts.items()):
+    for col, (name, d) in enumerate(parts.items()):
+        m, posts, insert = print_pose(d["m"]), d["posts"], d["insert"]
         mesh = m.to_mesh()
         v = np.asarray(mesh.vert_properties)[:, :3]
         tri = v[np.asarray(mesh.tri_verts)]
@@ -194,10 +257,15 @@ def preview(parts, path):
         ax.set_xlim(c[0] - s, c[0] + s); ax.set_ylim(c[1] - s, c[1] + s); ax.set_zlim(0, 2 * s)
         ax.view_init(elev=35, azim=-60)
         ax.set_axis_off()
-        ax.set_title(f"{name}: back face up", fontsize=11)
+        ax.set_title(f"{name}: as printed, back face down", fontsize=11)
 
         ax = fig.add_subplot(2, len(parts), col + 1 + len(parts))
-        x0, y0, x1, y1 = lo[0], lo[1], hi[0], hi[1]
+        blo, bhi = d["m"].bounding_box()[:3], d["m"].bounding_box()[3:]
+        x0, y0, x1, y1 = blo[0], blo[1], bhi[0], bhi[1]
+        for x, y in d["pockets"]:
+            ax.add_patch(Circle((x, y), BOSS_POCKET_D / 2, fill=False, ls=":", color="#2d5f63"))
+        for lx0, ly0, lx1, ly1 in d["lips"]:
+            ax.add_patch(plt.Rectangle((lx0, ly0), lx1 - lx0, ly1 - ly0, color="#6fb3b8"))
         ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, lw=1.5))
         for x, y in posts:
             ax.add_patch(Circle((x, y), HEAD_D / 2, fill=False, ls="--", color="#555"))
@@ -207,10 +275,11 @@ def preview(parts, path):
         ax.annotate(f"M5 insert ({insert[0]:g}, {insert[1]:g})", insert, xytext=(0, 12), textcoords="offset points",
                     ha="center", fontsize=7)
         ax.set_xlim(x0 - 3, x1 + 3); ax.set_ylim(y0 - 3, y1 + 3); ax.set_aspect("equal")
-        ax.set_title(f"{x1 - x0:.0f} x {y1 - y0:.0f} x {PLATE_T:g} mm, from the back", fontsize=9)
+        lip = f" + {LIP_DEPTH:g} mm lip" if d["lips"] else ""
+        ax.set_title(f"{x1 - x0:.0f} x {y1 - y0:.0f} x {PLATE_T:g} mm{lip}, seen from the back", fontsize=9)
         ax.tick_params(labelsize=7)
-    fig.suptitle(f"Junction mounts: M3 posts {POST_INSET:g} mm from each panel edge ({PITCH:g} mm across a seam)",
-                 fontsize=12)
+    fig.suptitle(f"Junction mounts: M3 posts {POST_INSET:g} mm from each panel edge ({PITCH:g} mm across a seam). "
+                 "Dotted: magnet-boss pockets on the panel side. Shaded: lips.", fontsize=12)
     fig.tight_layout()
     fig.savefig(path, dpi=110)
 
@@ -252,15 +321,18 @@ def preview_blocks(path):
 
 
 def main():
-    parts = {"quad": quad(), "pair": pair(), "corner": corner()}
-    for name, (m, posts, insert) in parts.items():
+    parts = {"quad": quad(), "pair_edge": pair_edge(), "pair": pair(), "corner": corner()}
+    for name, d in parts.items():
+        m, posts, insert = d["m"], d["posts"], d["insert"]
         assert m.status().name == "NoError", (name, m.status())
         # One through hole per post; the insert hole is blind and adds none.
         assert m.genus() == len(posts), (name, m.genus())
         web = wall_thickness(posts, insert)
         assert web >= 2.0, f"{name}: only {web:.1f} mm between holes"
         lo, hi = np.asarray(m.bounding_box()[:3]), np.asarray(m.bounding_box()[3:])
-        write_stl(m, ROOT / "stl" / f"{name}.stl")
+        # The insert's floor stays clear of the boss pockets.
+        assert PLATE_T - INSERT_DEPTH - BOSS_POCKET >= 1.0, "insert hole breaks into a boss pocket"
+        write_stl(print_pose(m), ROOT / "stl" / f"{name}.stl")
         print(f"{name:9s} {hi[0] - lo[0]:.0f} x {hi[1] - lo[1]:.0f} x {hi[2] - lo[2]:.0f} mm, "
               f"{m.volume() / 1000:.1f} cm3, thinnest web {web:.1f} mm, {m.num_tri()} triangles")
     preview(parts, ROOT.parent / "docs" / "diagrams" / "junction-mounts.png")

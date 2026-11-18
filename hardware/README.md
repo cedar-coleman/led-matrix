@@ -8,9 +8,10 @@ Junction mounts that hold the panels to the 2020 frame, and the blocks that hold
 
 | File | Part | Print |
 | --- | --- | --- |
-| `stl/quad.stl` | Four panel corners | 6 |
-| `stl/pair.stl` | Two posts across a seam: the wall's left and right edges (onto the end stiles), the top and bottom edges, and the optional mid-edge posts on the row seams | 10, or 18 with the optional ones |
-| `stl/corner.stl` | One post at each outer corner of the wall | 4 |
+| `stl/quad.stl` | Four panel corners; its two wide-spaced pairs of magnet-boss pockets go along the rows | 6 |
+| `stl/pair_edge.stl` | Two posts across a seam on the wall's outer edge, with a lip down the panels' side: the left and right edges (onto the end stiles) and the top and bottom edges | 10 |
+| `stl/pair.stl` | The same without the lip, for the optional mid-edge posts on the row seams | 8 (optional) |
+| `stl/corner.stl` | One post at each outer corner of the wall, with lips down both outer sides | 4 |
 | `stl/hanger.stl` | Top of each end stile: keyhole that hangs on a screw in the wall | 2 |
 | `stl/bumper.stl` | Bottom of each end stile: rests on the wall | 2 |
 
@@ -19,22 +20,31 @@ Junction mounts that hold the panels to the 2020 frame, and the blocks that hold
 ## Printing
 
 - PETG or ASA, not PLA: the mounts carry the wall and sit on warm panel backs.
-- Print flat, as the STL is oriented. Mounts: the face with the counterbores and the insert
-  hole up. Wall blocks: the wall face (counterbores and keyhole) down; the keyhole's pocket
-  bridges 10 mm, so no supports.
+- Print flat, as the STL is oriented, with no supports. Mounts: back face down (the
+  counterbores and the insert hole on the bed), so the lips and the magnet-boss pockets
+  point up. Wall blocks: the wall face (counterbores and keyhole) down; the keyhole's
+  pocket bridges 10 mm.
 - 4 walls, 40% infill or more, 0.2 mm layers. The holes need to be round, so check that the
   slicer isn't using a coarse arc resolution.
-- Press an M5 heat-set insert into each mount's 6.4 mm hole with a soldering iron, flush with
-  the top face, and let it cool before loading it.
+- Press an M5 heat-set insert into each fixed mount's 6.4 mm hole (on the back face) with a
+  soldering iron, flush with the face, and let it cool before loading it.
 
 ## Fit one before printing the rest
 
-The posts' position, 6 mm in from each panel edge, is scaled from the supplier's photo, so it
-is good to about 1 mm. Print one quad, lay four panels face down with their corners together,
-and screw the quad on with M3 x 10 screws. If all four start without forcing, print the rest.
+The posts' position, 6 mm in from each panel edge, is measured with a caliper on the panels
+(5.8 to 6.5 mm), so it is good to about half a millimetre. Print one quad and one
+`pair_edge`. Lay four panels face down with their corners together and screw the quad on
+with M3 x 10 screws: all four should start without forcing, and the quad should sit flat on
+the rims without rocking. Then fit the `pair_edge` at an outer edge: the lip should slide
+down the panels' side without forcing and without play. If all of that holds, print the
+rest.
 
-If they don't line up, measure from a post's centre to the panel's edge, set `POST_INSET` at
-the top of `mounts.py`, and build the STLs again:
+If the screws don't line up, measure from a post's centre to the panel's edge and set
+`POST_INSET`. If the quad rocks, a magnet boss stands taller than its pocket: measure how far
+the bosses stand above the rim and set `BOSS_POCKET` a millimetre deeper (keep
+`PLATE_T - INSERT_DEPTH - BOSS_POCKET` at 1 mm or more, raising `PLATE_T` if needed). If the
+lip binds or rattles, change `LIP_GAP`. All are at the top of `mounts.py`; then build the
+STLs again:
 
 ```sh
 python3 -m venv .tools/cad-venv
@@ -44,7 +54,7 @@ python3 -m venv .tools/cad-venv
 
 The script checks each part is a clean solid with one through hole per post and at least
 2 mm of material between holes, then rewrites `stl/` and the drawing above. The other
-settings (plate thickness, counterbore, insert hole, the insert's 9 mm offset) are at the top
-of the same file. The edge inserts sit `POST_INSET + OFFSET` (15 mm) in from the wall's top
-and bottom edges, on the 38 mm rails flush with those edges: keep that figure under about
-30 mm if you change either.
+settings (plate thickness, counterbore, insert hole, the insert's 9 mm offset) are at the
+top of the same file too. The edge inserts sit `POST_INSET + OFFSET` (15 mm) in from the
+wall's left and right edges, on the end stiles (10 to 30 mm in): keep that figure between
+about 13 and 27 mm if you change either.

@@ -399,12 +399,12 @@ def mounting():
     callout(wx + 22, top + 490, top + 70, "bumper block at the bottom of each end stile")
     callout(wx + 55, top + 120, top + 110, "end stile (2020), in the same plane as the rails")
     callout(wx + 55, top + 180, top + 150, "seam rail (2020), directly behind the panels")
-    callout(wx + 69, top + 185, top + 190, "junction mount, 9 mm: M5 x 25 from the frame's back into its insert")
+    callout(wx + 69, top + 185, top + 190, "junction mount, 12 mm: M5 x 25 from the frame's back into its insert")
     callout(wx + 81, top + 250, top + 230, "LED panels, face out (about 15 mm deep)")
     callout(wx + 25, top + 360, top + 290, "supply on the lower seam rail's back (dashed)")
     callout(wx + 99, top + 430, top + 330, "warm air off the panels' backs", "#e07a5f")
     callout(wx + 5, top + 520, top + 370, "cooler air in at the bottom, up behind the frame and past the supplies", TEAL)
-    s.text(310, top + 420, "Wall to panel face: about 89 mm. Nothing below or beside the screen.", size=15, anchor="start")
+    s.text(310, top + 420, "Wall to panel face: about 93 mm. Nothing below or beside the screen.", size=15, anchor="start")
     s.text(310, top + 446, "The gap stays open at the top, bottom and sides: don't box it in.", size=15, anchor="start")
     # the lower seam rail seen from behind
     px, py = 1000, 120
@@ -541,7 +541,7 @@ def frame():
     for k in range(3):
         s.line([(x + 5, sy + 520 - k * 170), (x + 5, sy + 450 - k * 170)], stroke=TEAL, sw=2, arrow=True)
     labels = [("wall", sx + 15, sy + 60), (f"wall block, {BLOCK_T} mm", x + 22, sy + 70), ("end stile (2020)", x + 55, sy + 120),
-              ("mount (9 mm)", x + 69, sy + 190), ("panel", x + 81, sy + 260),
+              ("mount (12 mm)", x + 69, sy + 190), ("panel", x + 81, sy + 260),
               ("supply (on the rail, further in)", x + 25, sy + 330)]
     for i, (t, lx, ly2) in enumerate(labels):
         ty = sy + 40 + i * 30
@@ -549,7 +549,7 @@ def frame():
         s.text(sx + 166, ty, t, size=13, anchor="start")
     s.text(sx + 10, sy + 590, "air rises behind the frame,", size=13, anchor="start", fill=TEAL)
     s.text(sx + 10, sy + 608, "past the supplies", size=13, anchor="start", fill=TEAL)
-    s.text(sx + 10, sy + 640, "about 89 mm wall to panel face", size=14, anchor="start")
+    s.text(sx + 10, sy + 640, "about 93 mm wall to panel face", size=14, anchor="start")
     s.save("frame.svg")
 
 
