@@ -79,9 +79,11 @@ MID_ALONG = 10.4      # mid-edge posts (10.35 and 10.40 measured)
 MID_IN = 1.0          # (0.8 and 1.5 measured)
 WELL_D = 12.0         # inside diameter of the boss's cup (measured)
 WELL_DEPTH = 2.0      # the cup's depth (measured)
-PEG_D = WELL_D - 1.0  # 0.5 mm clearance all round, for small errors in the cup positions
-PEG_H = WELL_DEPTH - 0.4   # never bottoms out, so the plate sits on the rim
-PEG_CHAMFER = 0.6     # lead-in on the peg's tip
+PEG_CLEAR = 0.1       # clearance all round: a close fit (printed pegs tend to come out a
+                      # touch large; raise this if they won't go in, lower it if they rattle)
+PEG_D = WELL_D - 2 * PEG_CLEAR
+PEG_H = WELL_DEPTH - 0.1   # nearly the cup's depth, but never bottoms out: the plate sits on the rim
+PEG_CHAMFER = 0.3     # small lead-in on the peg's tip; the rest is full diameter
 PEG_REACH = BOSS_ALONG + PEG_D / 2 + 1.5   # plate edge beyond a post, on the side its peg is
 LIP_T = 1.4           # lip thickness
 LIP_DEPTH = 8.0       # how far the lip runs down the panel's side (the panel is about 15.5 mm deep)
@@ -134,8 +136,8 @@ def quad():
     posts = [(sx * hx, sy * hy) for sx in (-1, 1) for sy in (-1, 1)]
     # Each panel's corner boss lies along the row, away from the crossing.
     pegs = [(sx * (hx + BOSS_ALONG), sy * (hy + BOSS_IN)) for sx in (-1, 1) for sy in (-1, 1)]
-    rx = hx + PEG_REACH
-    return part((-rx, -hy - MARGIN, rx, hy + MARGIN), posts, (0, 0), pegs)
+    rx, ry = hx + PEG_REACH, hy + max(MARGIN, BOSS_IN + PEG_D / 2 + 1.5)
+    return part((-rx, -ry, rx, ry), posts, (0, 0), pegs)
 
 
 def pair_side():
@@ -143,8 +145,9 @@ def pair_side():
     hy = PITCH_Y / 2
     posts = [(0, -hy), (0, hy)]
     pegs = [(BOSS_ALONG, -hy - BOSS_IN), (BOSS_ALONG, hy + BOSS_IN)]
-    lips = [(-LIP_OUT, -hy - MARGIN, -LIP_OUT + LIP_T, hy + MARGIN)]
-    return part((-LIP_OUT, -hy - MARGIN, max(FAR, PEG_REACH), hy + MARGIN), posts, (OFFSET, 0), pegs, lips)
+    ry = hy + max(MARGIN, BOSS_IN + PEG_D / 2 + 1.5)
+    lips = [(-LIP_OUT, -ry, -LIP_OUT + LIP_T, ry)]
+    return part((-LIP_OUT, -ry, max(FAR, PEG_REACH), ry), posts, (OFFSET, 0), pegs, lips)
 
 
 def pair_top():

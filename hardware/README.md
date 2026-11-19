@@ -44,13 +44,14 @@ past the LED board's edge. If all of that holds, print the rest.
 
 If the screws don't line up, measure post centre to post centre across the seam that's off
 and set `PITCH_X` or `PITCH_Y`. The pegs drop into the magnet bosses' cups, which measure
-12 mm across and 2 mm deep (`WELL_D`, `WELL_DEPTH`); the pegs are 11 mm across and 1.6 mm
-tall, so they locate without bottoming out. The cups sit further from the corner posts
-(11.9 mm along the edge, `BOSS_ALONG`) than from the mid-edge posts (10.4 mm, `MID_ALONG`),
-measured on a flat photo of a whole panel back. If a peg sits beside its cup instead of in
-it, measure post centre to cup centre along the edge and set the matching one. If the lip
-binds or rattles, change `LIP_GAP`. All are at the top of `mounts.py`; then build the STLs
-again:
+12 mm across and 2 mm deep (`WELL_D`, `WELL_DEPTH`); the pegs are 11.8 mm across and 1.9 mm
+tall (`PEG_CLEAR` 0.1 mm), a close fit that locates firmly without bottoming out. If they're
+too tight to press in, raise `PEG_CLEAR` by 0.05 mm at a time. The cups sit further from the
+corner posts (11.9 mm along the edge, `BOSS_ALONG`) than from the mid-edge posts (10.4 mm,
+`MID_ALONG`), measured on a flat photo of a whole panel back. If a peg sits beside its cup
+instead of in it, measure post centre to cup centre along the edge and set the matching one.
+If the lip binds or rattles, change `LIP_GAP`. All are at the top of `mounts.py`; then build
+the STLs again:
 
 ```sh
 python3 -m venv .tools/cad-venv
