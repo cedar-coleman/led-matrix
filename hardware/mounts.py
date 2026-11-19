@@ -73,9 +73,9 @@ FAR = OFFSET + INSERT_D / 2 + 3.8   # plate edge beyond the posts' line, on the 
 # The panels' magnet bosses and the edge lips (mm)
 # Cup centre from its M3 post, measured on a flat photo of the whole back (scaled by the two
 # corner posts, 303.75 mm apart): along the long edge, and in from the post line.
-BOSS_ALONG = 11.9     # corner posts (11.85 and 12.0 measured)
+BOSS_ALONG = 10.9     # corner posts (11.85 and 12.0 from the photo; a test print sat 1 mm long)
 BOSS_IN = 0.3
-MID_ALONG = 10.4      # mid-edge posts (10.35 and 10.40 measured)
+MID_ALONG = 9.4       # mid-edge posts (10.35 and 10.40 from the photo, less the same 1 mm)
 MID_IN = 1.0          # (0.8 and 1.5 measured)
 WELL_D = 12.0         # inside diameter of the boss's cup (measured)
 WELL_DEPTH = 2.0      # the cup's depth (measured)
