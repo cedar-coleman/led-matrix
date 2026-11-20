@@ -1,8 +1,8 @@
 # Printed parts
 
-Junction mounts that hold the panels to the 2020 frame, and the blocks that hold the frame
-45 mm off the wall. Where they go, and the screws they take, is in
-[the assembly guide](../docs/assembly-guide.md), section 6.
+Junction mounts that hold the panels to the 2020 frame, the blocks that hold the frame
+45 mm off the wall, and the jigs for drilling the frame. Where they go, and the screws they
+take, is in [the assembly guide](../docs/assembly-guide.md), section 6.
 
 ![Junction mounts](../docs/diagrams/junction-mounts.png)
 
@@ -63,6 +63,36 @@ python3 -m venv .tools/cad-venv
 The script checks each part is a clean solid with one through hole per post and at least
 2 mm of material between holes, then rewrites `stl/` and the drawing above. The other
 settings (plate thickness, counterbore, insert hole, the insert's 9 mm offset) are at the
-top of the same file too. The edge inserts sit `PITCH_X / 2 + OFFSET` (about 17 mm) in from
-the wall's left and right edges, on the end stiles (10 to 30 mm in): keep that figure between
-about 13 and 27 mm if you change either.
+top of the same file too. The side pairs' and corners' inserts sit on the end stiles'
+centreline, `STILE_X` (20 mm) in from the wall's sides, so their holes go through the middle
+of the profile; the drilling jigs assume that.
+
+## Drilling jigs
+
+![Drilling jigs](../docs/diagrams/drilling-jigs.png)
+
+| File | Use | Print |
+| --- | --- | --- |
+| `stl/jig_drill_guide.stl` | Any single hole: square a pencil line across the extrusion, line the notches up with it, clamp, drill | 1 |
+| `stl/jig_stile_jig.stl` | End stiles: butt the stop against an end and drill both holes (12 and 155 mm), then the other end | 1 |
+| `stl/jig_mid_jig.stl` | Optional mid-edge holes: a 6 mm drill shank through the index hole into a quad hole, drill the guide hole (151 mm away) | 1 |
+| `stl/jig_pilot_sleeve.stl` | Drops into any guide hole for a 3 mm pilot drill | 1 |
+
+Each jig is a saddle that slides over the 2020 and holds a 6 mm drill on the profile's
+centreline, square to the face; the hole positions are in the assembly guide. Print them in
+PETG or ASA, top face down as the STL is oriented (no supports), and clamp the jig to the
+extrusion while drilling.
+
+- **Check the stile jig first.** Printed plastic shrinks a little: measure between its two
+  hole centres. It should be 143 mm (155 minus 12). If it's off by more than about 0.3 mm,
+  set `SHRINK` in `jigs.py` (for example 1.003 for 0.3% short) and print it again.
+- **Drill a 3 mm pilot first**, through the pilot sleeve, then the 6 mm hole through the
+  bare guide. The drill passes through the front slot, the centre bore and the back slot.
+- **Clean up** both sides with a countersink or a larger drill turned by hand, and blow the
+  chips out of the slots before fitting T-nuts.
+
+Build them again with:
+
+```sh
+.tools/cad-venv/bin/python hardware/jigs.py
+```

@@ -67,6 +67,9 @@ HEAD_DEPTH = 6.5      # leaves 5.5 mm under the head: an M3 x 10 goes 4.5 mm int
 INSERT_D = 6.4        # M5 heat-set insert hole: use the insert maker's figure
 INSERT_DEPTH = 7.0    # blind, from the back face; leaves a 5 mm floor
 OFFSET = 9.0          # pairs and corner: insert centre from the posts' line
+STILE_X = 20.0        # end stile's centreline from the wall's side (its left edge is 10 mm in)
+SIDE_OFFSET = STILE_X - PITCH_X / 2   # side pair and corner: insert on the stile's centreline,
+                                      # so its hole goes through the slot and core, not the slot's edge
 MARGIN = 7.0          # plate edge beyond a hole centre, except on a wall edge
 FAR = OFFSET + INSERT_D / 2 + 3.8   # plate edge beyond the posts' line, on the insert's side
 
@@ -147,7 +150,8 @@ def pair_side():
     pegs = [(BOSS_ALONG, -hy - BOSS_IN), (BOSS_ALONG, hy + BOSS_IN)]
     ry = hy + max(MARGIN, BOSS_IN + PEG_D / 2 + 1.5)
     lips = [(-LIP_OUT, -ry, -LIP_OUT + LIP_T, ry)]
-    return part((-LIP_OUT, -ry, max(FAR, PEG_REACH), ry), posts, (OFFSET, 0), pegs, lips)
+    far = max(SIDE_OFFSET + INSERT_D / 2 + 3.8, PEG_REACH)
+    return part((-LIP_OUT, -ry, far, ry), posts, (SIDE_OFFSET, 0), pegs, lips)
 
 
 def pair_top():
@@ -172,21 +176,23 @@ def pair_mid():
     return part((-reach, -ry, reach, ry), posts, (OFFSET, 0), pegs)
 
 
-def _corner(peg):
+def _corner(peg, insert):
     # The wall's outer corner is beyond (-EDGE, -EDGE); lips down both outer sides; the peg
     # points along the panel's long edge. Seen from behind with y up, this fits the
     # bottom-left corner as drawn and the top-right turned half round.
-    far = max(FAR, PEG_REACH)
+    far = max(SIDE_OFFSET + INSERT_D / 2 + 3.8, PEG_REACH)
     lips = [(-LIP_OUT, -LIP_OUT, far, -LIP_OUT + LIP_T), (-LIP_OUT, -LIP_OUT, -LIP_OUT + LIP_T, far)]
-    return part((-LIP_OUT, -LIP_OUT, far, far), [(0, 0)], (OFFSET, OFFSET), [peg], lips)
+    return part((-LIP_OUT, -LIP_OUT, far, far), [(0, 0)], insert, [peg], lips)
 
 
 def corner_a():
-    return _corner((BOSS_ALONG, BOSS_IN))   # bottom-left and top-right, seen from behind
+    # x runs along the row here, so the insert is SIDE_OFFSET in along x: on the stile's centreline.
+    return _corner((BOSS_ALONG, BOSS_IN), (SIDE_OFFSET, OFFSET))   # bottom-left and top-right
 
 
 def corner_b():
-    return _corner((BOSS_IN, BOSS_ALONG))   # top-left and bottom-right: the mirror image
+    # Turned a quarter round in use, so y runs along the row: the mirror image.
+    return _corner((BOSS_IN, BOSS_ALONG), (OFFSET, SIDE_OFFSET))   # top-left and bottom-right
 
 
 def print_pose(m):

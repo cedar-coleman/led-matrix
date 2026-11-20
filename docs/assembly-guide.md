@@ -183,12 +183,25 @@ made for.
   bottom edges flex more than you like, a fifth length gives top and bottom rails between
   the stiles, and those six pairs land on them. Print every mount in **PETG or ASA**, not
   PLA: they carry the wall's weight and the panel backs get warm.
-- **Fixing the mounts.** Lay the panels face down with all the mounts on, lay the frame on
-  them, and mark each fixed mount's insert on the frame. Drill a **6 mm hole straight
-  through** the rail or stile at each mark (through the centre bore; the slightly oversized
-  hole takes up about 0.5 mm of error), lay the frame back and drive an **M5 x 25 socket
-  head screw with a washer** from the frame's back into each insert: 20 mm of extrusion,
-  about 5 mm into the insert. Fit everything loosely, push the panels flush, then tighten.
+- **Drilling the frame.** Each fixed mount takes a **6 mm hole straight through** the rail
+  or stile, front face to back face, on the profile's centreline (through the slots and the
+  centre bore). Printed jigs in [`hardware/`](../hardware/README.md#drilling-jigs) centre
+  and square the drill, so only the positions along the extrusion need setting. From the
+  left end, seen from behind:
+  - **seam rails** (both the same): quad holes at **290, 610 and 930 mm** (610 is the
+    rail's middle). Square a pencil line across at each and drill through the `drill_guide`.
+    Optional mid-edge holes at **139, 459, 779 and 1081 mm**: each is 151 mm from a quad
+    hole, so drill them with the `mid_jig`, its index pin in the quad hole;
+  - **end stiles** (both the same): **12, 155, 315 and 458 mm** from the top. Butt the
+    `stile_jig` against one end and drill both its holes, then turn it round to the other
+    end: no measuring.
+
+  Mark each rail's left end so the mid-edge holes come out on the right side. Then lay the
+  panels face down with all the mounts on, lay the frame on them, and drive an **M5 x 25
+  socket head screw with a washer** from the frame's back into each insert: 20 mm of
+  extrusion, about 5 mm into the insert. Fit everything loosely, push the panels flush,
+  then tighten. Three of the mid-edge mounts sit with their insert to the right of the
+  posts (seen from behind); the right-hand one is turned round, insert to the left.
 - **Gaps.** The mount's 12 mm is the gap between the panel backs and the frame: enough for
   the two row-to-row ribbons and the power leads to pass over it. Away from the frame there
   is about 77 mm between the panel backs and the wall. Check one panel with its leads plugged in before you
@@ -203,11 +216,14 @@ made for.
 - **Wall blocks** (printed, PETG or ASA, 45 mm thick, each fixed into an end stile's rear
   slot with M5 x 30 screws and M5 T-nuts from the wall face; the counterbores are deep so
   the 30 mm screw reaches):
-  - a **hanger** at the top of each end stile, with a keyhole on its wall face: the frame
-    hangs on two pan-head screws (#8 or #10, head 9.5 mm or less) in the wall, left standing
-    out about 3 mm. Set them 1240 mm apart (the stiles' centres) and level; the frame drops
-    18 mm onto them. Into studs where you can, or anchors rated well above 10 kg;
-  - a **bumper** at the bottom of each end stile, resting on the wall.
+  - a **hanger** near the top of each end stile, its top 22 mm below the stile's end so it
+    clears the corner mount's screw head. It has a keyhole on its wall face: the frame hangs
+    on two pan-head screws (#8 or #10, head 9.5 mm or less) in the wall, left standing out
+    about 3 mm. Set them 1240 mm apart (the stiles' centres), level, and 59 mm below where
+    the panels' top edge will be; the frame drops 18 mm onto them. Into studs where you can,
+    or anchors rated well above 10 kg;
+  - a **bumper** near the bottom of each end stile, its bottom 22 mm above the stile's end,
+    resting on the wall.
 
   ![Wall blocks](diagrams/wall-blocks.png)
 - **Power on the lower rail's back**, between the mount screws, as in

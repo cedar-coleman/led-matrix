@@ -368,7 +368,9 @@ STRUTS = (415, 845)       # struts' left edges, between the seam rails, clear of
 SUPPLY_X = (180, 980)     # supplies' left edges on the lower seam rail's back
 BLOCKS_X = 656            # the two power blocks side by side from here
 BLOCK_T = 45              # wall blocks: the gap between the wall and the frame
-EDGE_INSERT = 17          # edge and corner mounts' inserts from the wall's edge (hardware/mounts.py)
+EDGE_INSERT = 17          # corner and top/bottom mounts' inserts from the wall's top or bottom edge
+STILE_CX = 20             # end stiles' centreline: the side and corner mounts' inserts (hardware/mounts.py)
+BLOCK_IN = 22             # wall blocks start this far in from a stile's end, clear of the corner screws
 
 
 # ---- mounting ---------------------------------------------------------------------------
@@ -422,7 +424,7 @@ def mounting():
         s.text(f(x) + 32, py + 55, f"Supply {'AB'[i]}", size=12, weight="bold")
     s.rect(f(BLOCKS_X), py + 75, 64, 20, fill="#fde3c4", stroke=BLACK, sw=1.5)
     s.text(f(BLOCKS_X) + 32, py + 55, "blocks", size=12, weight="bold")
-    for x in (EDGE_INSERT, 320, 640, 960, 1280 - EDGE_INSERT):
+    for x in (STILE_CX, 320, 640, 960, 1280 - STILE_CX):
         s.circle(f(x), py + 85, 5, fill=ORANGE, stroke=BLACK)
     for x in (169, 489, 809, 1129):
         s.circle(f(x), py + 85, 4, fill="white", stroke=ORANGE)
@@ -454,8 +456,8 @@ def frame():
     # end stiles, seam rails between them, struts between the rails: all in one plane
     for x in STILES:
         s.rect(ox + x, oy + STILE_Y, 20, STILE_L, **metal)
-        s.rect(ox + x - 3, oy + STILE_Y + 2, 26, 80, fill="none", stroke=TEAL, sw=2, dash="5,3")
-        s.rect(ox + x - 3, oy + STILE_Y + STILE_L - 42, 26, 40, fill="none", stroke=TEAL, sw=2, dash="5,3")
+        s.rect(ox + x - 3, oy + STILE_Y + BLOCK_IN, 26, 80, fill="none", stroke=TEAL, sw=2, dash="5,3")
+        s.rect(ox + x - 3, oy + STILE_Y + STILE_L - BLOCK_IN - 40, 26, 40, fill="none", stroke=TEAL, sw=2, dash="5,3")
     for k in (1, 2):
         s.rect(ox + STILES[0] + 20, oy + k * PH - 10, RAIL_L, 20, **metal)
         s.text(ox + W_ + 16, oy + k * PH + 6, "seam rail", size=14, anchor="start")
@@ -490,10 +492,10 @@ def frame():
         s.rect(bx + 32, ly - 20, 32, 39, fill="#d3e4f8", stroke=col, sw=2, rx=2)
     s.text(ox + BLOCKS_X + 64, ly + 40, "+5 V and GND blocks", size=13, weight="bold")
     # junction mounts at their inserts
-    e = EDGE_INSERT
-    fixed = [(e, e), (W_ - e, e), (e, H_ - e), (W_ - e, H_ - e)]
+    e, sx = EDGE_INSERT, STILE_CX
+    fixed = [(sx, e), (W_ - sx, e), (sx, H_ - e), (W_ - sx, H_ - e)]
     for k in (1, 2):
-        fixed += [(e, k * PH), (W_ - e, k * PH)] + [(c * PW, k * PH) for c in (1, 2, 3)]
+        fixed += [(sx, k * PH), (W_ - sx, k * PH)] + [(c * PW, k * PH) for c in (1, 2, 3)]
     for x, y in fixed:
         s.circle(ox + x, oy + y, 11, fill=ORANGE, stroke=BLACK)
         s.circle(ox + x, oy + y, 4, fill=BLACK)
